@@ -27,10 +27,9 @@ type RuleAction struct {
 }
 
 type RuleFunctionResult struct {
-	Message  string   `json:"message,omitempty"`
-	Path     []string `json:"path,omitempty"`
-	RuleID   string   `json:"ruleId,omitempty"`
-	Severity Severity `json:"severity,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Path    []string `json:"path,omitempty"`
+	RuleID  string   `json:"ruleId,omitempty"`
 }
 
 type RuleFunctionSchema struct {

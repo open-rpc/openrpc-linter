@@ -86,11 +86,7 @@ rules:
 		t.Errorf("Expected 'Missing required field 'description' at $.info' in output, but got: %s", outputStr)
 	}
 
-	if !strings.Contains(outputStr, "[ERROR] info-description: Missing required field 'description' at $.info") {
-		t.Errorf("Expected output to include severity and rule id, but got: %s", outputStr)
-	}
-
-	if !strings.Contains(outputStr, "Summary: 1 error(s), 0 warning(s), 0 info finding(s)") {
+	if !strings.Contains(outputStr, "1 error(s) found") {
 		t.Errorf("Expected error summary in output, but got: %s", outputStr)
 	}
 }
@@ -229,11 +225,8 @@ rules:
 	}
 
 	outputStr := output.String()
-	if !strings.Contains(outputStr, "[WARN] info-description: Missing required field 'description' at $.info") {
-		t.Fatalf("Expected warn severity finding in output, got:\n%s", outputStr)
-	}
-	if !strings.Contains(outputStr, "Summary: 0 error(s), 1 warning(s), 0 info finding(s)") {
-		t.Fatalf("Expected warning summary in output, got:\n%s", outputStr)
+	if !strings.Contains(outputStr, "Missing required field 'description' at $.info") {
+		t.Fatalf("Expected warning violation output, got:\n%s", outputStr)
 	}
 }
 
