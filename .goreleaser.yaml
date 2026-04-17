@@ -36,11 +36,37 @@ archives:
         format: zip
 
 changelog:
+  use: git
   sort: asc
+  abbrev: 7
+  groups:
+    - title: "Breaking Changes"
+      regexp: '^.*?(\w+)(\([\w\s]+\))?!:.+$'
+      order: 0
+    - title: "Features"
+      regexp: '^.*?feat(\([\w\s]+\))?:.+$'
+      order: 1
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([\w\s]+\))?:.+$'
+      order: 2
+    - title: "Performance"
+      regexp: '^.*?perf(\([\w\s]+\))?:.+$'
+      order: 3
+    - title: "Dependencies"
+      regexp: '^.*?(deps|build)(\([\w\s]+\))?:.+$'
+      order: 4
+    - title: "Other"
+      order: 999
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - '^style:'
+      - '^refactor:'
+      - 'Merge pull request'
+      - 'Merge branch'
 
 release:
   github:
