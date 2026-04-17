@@ -3,6 +3,7 @@ package reporters
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
@@ -11,30 +12,64 @@ type TextReporter struct{}
 
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
 	errorCount := 0
-	ruleErrors := make(map[string][]string)
+	warnCount := 0
+	infoCount := 0
 
 	for _, result := range results {
 		if result.Message != "" {
-			ruleErrors[result.RuleID] = append(ruleErrors[result.RuleID], result.Message)
-			errorCount++
-		}
-	}
+			switch result.Severity {
+			case types.SeverityWarn:
+				warnCount++
+			case types.SeverityInfo:
+				infoCount++
+			default:
+				errorCount++
+			}
 
-	for ruleId, messages := range ruleErrors {
-		for _, message := range messages {
-			if _, err := fmt.Fprintf(output, "❌ %s: %s\n", ruleId, message); err != nil {
+			ruleID := result.RuleID
+			if ruleID == "" {
+				ruleID = "-"
+			}
+
+			severity := result.Severity
+			if severity == "" {
+				severity = types.SeverityError
+			}
+
+			icon := "❌"
+			switch severity {
+			case types.SeverityWarn:
+				icon = "⚠️"
+			case types.SeverityInfo:
+				icon = "ℹ️"
+			}
+
+			if _, err := fmt.Fprintf(
+				output,
+				"%s [%s] %s: %s\n",
+				icon,
+				strings.ToUpper(string(severity)),
+				ruleID,
+				result.Message,
+			); err != nil {
 				return err
 			}
 		}
 	}
 
-	if errorCount == 0 {
+	totalFindings := errorCount + warnCount + infoCount
+	if totalFindings == 0 {
 		if _, err := fmt.Fprintf(output, "\n✅ All %d rules passed!\n", totalRules); err != nil {
 			return err
 		}
 	} else {
-		rulesWithErrors := len(ruleErrors)
-		if _, err := fmt.Fprintf(output, "\n❌ %d error(s) found in %d rules\n", errorCount, rulesWithErrors); err != nil {
+		if _, err := fmt.Fprintf(
+			output,
+			"\nSummary: %d error(s), %d warning(s), %d info finding(s)\n",
+			errorCount,
+			warnCount,
+			infoCount,
+		); err != nil {
 			return err
 		}
 	}

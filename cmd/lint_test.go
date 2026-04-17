@@ -86,7 +86,11 @@ rules:
 		t.Errorf("Expected 'Missing required field 'description' at $.info' in output, but got: %s", outputStr)
 	}
 
-	if !strings.Contains(outputStr, "1 error(s) found") {
+	if !strings.Contains(outputStr, "[ERROR] info-description: Missing required field 'description' at $.info") {
+		t.Errorf("Expected output to include severity and rule id, but got: %s", outputStr)
+	}
+
+	if !strings.Contains(outputStr, "Summary: 1 error(s), 0 warning(s), 0 info finding(s)") {
 		t.Errorf("Expected error summary in output, but got: %s", outputStr)
 	}
 }
@@ -161,5 +165,137 @@ rules:
 
 	if !strings.Contains(outputStr, "All 1 rules passed") {
 		t.Errorf("Expected 'All 1 rules passed' in output, but got: %s", outputStr)
+	}
+}
+
+func TestRunLintWarningSeverityDoesNotFail(t *testing.T) {
+	// Create a temporary OpenRPC file without description to trigger a truthy violation.
+	openrpcContent := map[string]interface{}{
+		"info": map[string]interface{}{
+			"title":   "Test API",
+			"version": "1.0.0",
+		},
+	}
+
+	openrpcData, err := json.Marshal(openrpcContent)
+	if err != nil {
+		t.Fatalf("Failed to create test OpenRPC content: %v", err)
+	}
+
+	tempOpenRPC, err := os.CreateTemp("", "test-openrpc-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp OpenRPC file: %v", err)
+	}
+	defer os.Remove(tempOpenRPC.Name())
+
+	if _, err := tempOpenRPC.Write(openrpcData); err != nil {
+		t.Fatalf("Failed to write test OpenRPC file: %v", err)
+	}
+	tempOpenRPC.Close()
+
+	// severity: warn should not cause RunLint to return an error.
+	rulesContent := `description: "Test rules"
+rules:
+  info-description:
+    description: "Info must have description"
+    given: "$.info"
+    severity: "warn"
+    then:
+      field: "description"
+      function: "truthy"
+`
+
+	tempRules, err := os.CreateTemp("", "test-rules-*.yml")
+	if err != nil {
+		t.Fatalf("Failed to create temp rules file: %v", err)
+	}
+	defer os.Remove(tempRules.Name())
+
+	if _, err := tempRules.WriteString(rulesContent); err != nil {
+		t.Fatalf("Failed to write test rules file: %v", err)
+	}
+	tempRules.Close()
+
+	var output bytes.Buffer
+	opts := LintOptions{
+		OpenRPCFile: tempOpenRPC.Name(),
+		RulesFile:   tempRules.Name(),
+		Output:      &output,
+	}
+
+	err = RunLint(opts)
+	if err != nil {
+		t.Fatalf("RunLint should not fail for warn severity violations, but got: %v\nOutput:\n%s", err, output.String())
+	}
+
+	outputStr := output.String()
+	if !strings.Contains(outputStr, "[WARN] info-description: Missing required field 'description' at $.info") {
+		t.Fatalf("Expected warn severity finding in output, got:\n%s", outputStr)
+	}
+	if !strings.Contains(outputStr, "Summary: 0 error(s), 1 warning(s), 0 info finding(s)") {
+		t.Fatalf("Expected warning summary in output, got:\n%s", outputStr)
+	}
+}
+
+func TestRunLintInvalidSeverityFailsFast(t *testing.T) {
+	openrpcContent := map[string]interface{}{
+		"info": map[string]interface{}{
+			"title":   "Test API",
+			"version": "1.0.0",
+		},
+	}
+
+	openrpcData, err := json.Marshal(openrpcContent)
+	if err != nil {
+		t.Fatalf("Failed to create test OpenRPC content: %v", err)
+	}
+
+	tempOpenRPC, err := os.CreateTemp("", "test-openrpc-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp OpenRPC file: %v", err)
+	}
+	defer os.Remove(tempOpenRPC.Name())
+
+	if _, err := tempOpenRPC.Write(openrpcData); err != nil {
+		t.Fatalf("Failed to write test OpenRPC file: %v", err)
+	}
+	tempOpenRPC.Close()
+
+	rulesContent := `description: "Test rules"
+rules:
+  info-description:
+    description: "Info must have description"
+    given: "$.info"
+    severity: "critical"
+    then:
+      field: "description"
+      function: "truthy"
+`
+
+	tempRules, err := os.CreateTemp("", "test-rules-*.yml")
+	if err != nil {
+		t.Fatalf("Failed to create temp rules file: %v", err)
+	}
+	defer os.Remove(tempRules.Name())
+
+	if _, err := tempRules.WriteString(rulesContent); err != nil {
+		t.Fatalf("Failed to write test rules file: %v", err)
+	}
+	tempRules.Close()
+
+	var output bytes.Buffer
+	opts := LintOptions{
+		OpenRPCFile: tempOpenRPC.Name(),
+		RulesFile:   tempRules.Name(),
+		Output:      &output,
+	}
+
+	err = RunLint(opts)
+	if err == nil {
+		t.Fatalf("Expected RunLint to fail for invalid severity")
+	}
+
+	if !strings.Contains(err.Error(), "invalid severity") {
+		t.Fatalf("Expected invalid severity error, got: %v", err)
 	}
 }
