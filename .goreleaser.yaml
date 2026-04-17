@@ -44,7 +44,7 @@ changelog:
 
 release:
   github:
-    owner: shanejonas
+    owner: open-rpc
     name: openrpc-linter
   draft: false
   prerelease: auto
@@ -52,10 +52,10 @@ release:
 # Homebrew tap (uncomment when you create a homebrew-tap repository)
 # brews:
 #   - name: openrpc-linter
-#     homepage: "https://github.com/shanejonas/openrpc-linter"
+#     homepage: "https://github.com/open-rpc/openrpc-linter"
 #     description: "Fast, extensible linter for OpenRPC documents"
 #     license: "MIT"
 #     repository:
-#       owner: shanejonas
+#       owner: open-rpc
 #       name: homebrew-tap
 #       branch: main 

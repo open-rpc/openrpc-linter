@@ -1,6 +1,6 @@
 # OpenRPC Linter
 
-[![CI](https://github.com/shanejonas/openrpc-linter/workflows/CI/badge.svg)](https://github.com/shanejonas/openrpc-linter/actions)
+[![CI](https://github.com/open-rpc/openrpc-linter/workflows/CI/badge.svg)](https://github.com/open-rpc/openrpc-linter/actions)
 
 Fast, extensible linter for OpenRPC documents.
 
@@ -20,7 +20,7 @@ openrpc-linter validate openrpc.json
 ## Install
 
 ```bash
-go install github.com/shanejonas/openrpc-linter@latest
+go install github.com/open-rpc/openrpc-linter@latest
 ```
 
 ## Rules

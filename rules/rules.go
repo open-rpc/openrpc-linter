@@ -3,8 +3,8 @@ package rules
 import (
 	"fmt"
 
-	"github.com/shanejonas/openrpc-linter/functions"
-	"github.com/shanejonas/openrpc-linter/types"
+	"github.com/open-rpc/openrpc-linter/functions"
+	"github.com/open-rpc/openrpc-linter/types"
 
 	"github.com/PaesslerAG/jsonpath"
 	"gopkg.in/yaml.v3"

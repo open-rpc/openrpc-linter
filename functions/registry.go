@@ -1,6 +1,6 @@
 package functions
 
-import "github.com/shanejonas/openrpc-linter/types"
+import "github.com/open-rpc/openrpc-linter/types"
 
 var FunctionRegistry = make(map[string]types.RuleFunction)
 

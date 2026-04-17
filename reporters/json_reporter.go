@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/shanejonas/openrpc-linter/types"
+	"github.com/open-rpc/openrpc-linter/types"
 )
 
 type JSONReporter struct{}

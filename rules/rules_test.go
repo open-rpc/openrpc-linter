@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shanejonas/openrpc-linter/types"
+	"github.com/open-rpc/openrpc-linter/types"
 
 	"gopkg.in/yaml.v3"
 )

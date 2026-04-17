@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shanejonas/openrpc-linter/types"
+	"github.com/open-rpc/openrpc-linter/types"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )

@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/shanejonas/openrpc-linter/reporters"
-	"github.com/shanejonas/openrpc-linter/rules"
-	"github.com/shanejonas/openrpc-linter/types"
+	"github.com/open-rpc/openrpc-linter/reporters"
+	"github.com/open-rpc/openrpc-linter/rules"
+	"github.com/open-rpc/openrpc-linter/types"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
