@@ -20,9 +20,9 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 		}
 	}
 
-	for ruleId, messages := range ruleErrors {
+	for ruleID, messages := range ruleErrors {
 		for _, message := range messages {
-			if _, err := fmt.Fprintf(output, "❌ %s: %s\n", ruleId, message); err != nil {
+			if _, err := fmt.Fprintf(output, "❌ %s: %s\n", ruleID, message); err != nil {
 				return err
 			}
 		}

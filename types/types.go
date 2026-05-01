@@ -4,11 +4,20 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+type Severity string
+
+const (
+	SeverityError Severity = "error"
+	SeverityWarn  Severity = "warn"
+	SeverityInfo  Severity = "info"
+)
+
 type Rule struct {
-	Description string      `json:"description"`
-	Given       string      `json:"given,omitempty"`
-	Then        *RuleAction `json:"then,omitempty"`
-	Extends     interface{} `json:"extends,omitempty"`
+	Description string      `json:"description" yaml:"description"`
+	Given       string      `json:"given,omitempty" yaml:"given,omitempty"`
+	Then        *RuleAction `json:"then,omitempty" yaml:"then,omitempty"`
+	Extends     interface{} `json:"extends,omitempty" yaml:"extends,omitempty"`
+	Severity    Severity    `json:"severity,omitempty" yaml:"severity,omitempty"`
 }
 
 type RuleAction struct {

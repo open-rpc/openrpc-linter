@@ -42,6 +42,23 @@ func GetReporter(format string) reporters.Reporter {
 	}
 }
 
+func normalizeSeverity(severity types.Severity) (types.Severity, error) {
+	if severity == "" {
+		return types.SeverityError, nil
+	}
+
+	switch types.Severity(strings.ToLower(string(severity))) {
+	case types.SeverityError:
+		return types.SeverityError, nil
+	case types.SeverityWarn:
+		return types.SeverityWarn, nil
+	case types.SeverityInfo:
+		return types.SeverityInfo, nil
+	default:
+		return "", fmt.Errorf("invalid severity %q; expected one of: error, warn, info", severity)
+	}
+}
+
 func RunLint(opts LintOptions) error {
 	openrpcData, err := os.ReadFile(opts.OpenRPCFile)
 	if err != nil {
@@ -80,8 +97,16 @@ func RunLint(opts LintOptions) error {
 
 	var allResults []types.RuleFunctionResult
 	totalRules := len(rulesWrapper.Rules)
+	errorCount := 0
 
 	for ruleId, rule := range rulesWrapper.Rules {
+		normalizedSeverity, err := normalizeSeverity(rule.Severity)
+		if err != nil {
+			fmt.Fprintf(opts.Output, "Error validating rules file: rule %q %v\n", ruleId, err)
+			return err
+		}
+		rule.Severity = normalizedSeverity
+
 		context := types.RuleFunctionContext{
 			Rule:             &rule,
 			RuleID:           ruleId,
@@ -95,13 +120,26 @@ func RunLint(opts LintOptions) error {
 				RuleID:  ruleId,
 				Message: err.Error(),
 			})
+			errorCount++
 			continue
+		}
+
+		ruleViolationCount := 0
+		for i := range results {
+			if results[i].RuleID == "" {
+				results[i].RuleID = ruleId
+			}
+			if results[i].Message != "" {
+				ruleViolationCount++
+			}
+		}
+
+		if normalizedSeverity == types.SeverityError {
+			errorCount += ruleViolationCount
 		}
 
 		allResults = append(allResults, results...)
 	}
-
-	errorCount := len(allResults)
 
 	reporter := GetReporter(opts.Format)
 	if err := reporter.Format(allResults, totalRules, opts.Output); err != nil {
