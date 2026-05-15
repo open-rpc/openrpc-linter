@@ -2,77 +2,78 @@ package rules
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 
 	"github.com/open-rpc/openrpc-linter/functions"
 	"github.com/open-rpc/openrpc-linter/types"
 
-	"github.com/PaesslerAG/jsonpath"
+	"github.com/theory/jsonpath"
 	"gopkg.in/yaml.v3"
 )
 
+var normalizedArrayIndexPattern = regexp.MustCompile(`\[(\d+)\]$`)
+
 func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, error) {
-
-	documentToUse := context.Document
-	if context.ResolvedDocument != nil {
-		documentToUse = context.ResolvedDocument
+	if rule.Then == nil {
+		return []types.RuleFunctionResult{}, nil
 	}
 
-	res, err := jsonpath.Get(rule.Given, documentToUse)
+	ruleFunc := functions.FunctionRegistry[rule.Then.Function]
+	if ruleFunc == nil {
+		return nil, fmt.Errorf("unknown function: %s", rule.Then.Function)
+	}
+
+	path, err := jsonpath.Parse(rule.Given)
 	if err != nil {
-		return nil, fmt.Errorf("error getting JSON path: %w", err)
+		return nil, fmt.Errorf("error parsing JSON path: %w", err)
 	}
 
-	if rule.Then != nil {
-		ruleFunc := functions.FunctionRegistry[rule.Then.Function]
-		if ruleFunc == nil {
-			return nil, fmt.Errorf("unknown function: %s", rule.Then.Function)
+	document := context.Document
+	if context.ResolvedDocument != nil {
+		document = context.ResolvedDocument
+	}
+
+	var allResults []types.RuleFunctionResult
+	for _, node := range path.SelectLocated(document) {
+		valueToValidate := node.Node
+		if rule.Then.Field != "" {
+			if itemMap, ok := node.Node.(map[string]interface{}); ok {
+				valueToValidate = itemMap[rule.Then.Field]
+			}
 		}
 
-		if resArray, ok := res.([]interface{}); ok {
-			var allResults []types.RuleFunctionResult
+		itemContext := context
+		if arrayIndex, ok := arrayIndexFromNormalizedPath(node.Path.String()); ok {
+			itemContext.ArrayIndex = &arrayIndex
+		}
 
-			for i, item := range resArray {
-				var valueToValidate interface{}
-
-				if rule.Then.Field != "" {
-					if itemMap, ok := item.(map[string]interface{}); ok {
-						valueToValidate = itemMap[rule.Then.Field]
-					}
-				} else {
-					valueToValidate = item
-				}
-
-				itemContext := context
-				itemContext.ArrayIndex = &i
-
-				results := ruleFunc.RunRule(valueToValidate, itemContext)
-
-				for _, result := range results {
-					if result.Message != "" {
-						allResults = append(allResults, result)
-					}
-				}
+		for _, result := range ruleFunc.RunRule(valueToValidate, itemContext) {
+			if result.Message == "" {
+				continue
 			}
-
-			return allResults, nil
-		} else {
-			var valueToValidate interface{}
-
-			if rule.Then.Field != "" {
-				if resMap, ok := res.(map[string]interface{}); ok {
-					valueToValidate = resMap[rule.Then.Field]
-				}
-			} else {
-				valueToValidate = res
+			if len(result.Path) == 0 {
+				result.Path = []string{node.Path.String()}
 			}
-
-			results := ruleFunc.RunRule(valueToValidate, context)
-
-			return results, nil
+			allResults = append(allResults, result)
 		}
 	}
 
-	return []types.RuleFunctionResult{}, nil
+	return allResults, nil
+}
+
+func arrayIndexFromNormalizedPath(path string) (int, bool) {
+	matches := normalizedArrayIndexPattern.FindStringSubmatch(path)
+	if len(matches) != 2 {
+		return 0, false
+	}
+
+	index, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, false
+	}
+
+	return index, true
 }
 
 func GetFieldFromNode(node *yaml.Node, field string) *yaml.Node {

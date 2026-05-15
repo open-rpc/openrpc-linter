@@ -11,18 +11,26 @@ type TextReporter struct{}
 
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
 	errorCount := 0
-	ruleErrors := make(map[string][]string)
+	// keep the whole result, not just the message, so we can print the path too
+	ruleErrors := make(map[string][]types.RuleFunctionResult)
 
 	for _, result := range results {
 		if result.Message != "" {
-			ruleErrors[result.RuleID] = append(ruleErrors[result.RuleID], result.Message)
+			ruleErrors[result.RuleID] = append(ruleErrors[result.RuleID], result)
 			errorCount++
 		}
 	}
 
-	for ruleID, messages := range ruleErrors {
-		for _, message := range messages {
-			if _, err := fmt.Fprintf(output, "❌ %s: %s\n", ruleID, message); err != nil {
+	for ruleID, results := range ruleErrors {
+		for _, result := range results {
+			if len(result.Path) == 0 {
+				if _, err := fmt.Fprintf(output, "❌ %s: %s\n", ruleID, result.Message); err != nil {
+					return err
+				}
+				continue
+			}
+
+			if _, err := fmt.Fprintf(output, "❌ %s at %s: %s\n", ruleID, result.Path[0], result.Message); err != nil {
 				return err
 			}
 		}

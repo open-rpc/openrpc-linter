@@ -1,9 +1,18 @@
 description: "OpenRPC validation rules"
 rules:
+  methods:
+    description: "OpenRPC documents should define at least one method."
+    given: "$.methods"
+    severity: "error"
+    then:
+      function: "schema"
+      functionOptions:
+        type: "array"
+        minItems: 1
   info-title:
     description: "Info must have description. It supports markdown, and usually shows up in documentation. So make good use of it."
     given: "$.info"
-    severity: "error" 
+    severity: "error"
     then:
       field: "description"
       function: "truthy"
@@ -28,3 +37,12 @@ rules:
     then:
       field: "examples"
       function: "truthy"
+  method-min:
+    description: "OpenRPC documents should define at least one method."
+    given: "$.methods"
+    severity: "error"
+    then:
+      function: "schema"
+      functionOptions:
+        type: "array"
+        minItems: 1
