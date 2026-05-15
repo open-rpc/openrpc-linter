@@ -13,10 +13,22 @@ import (
 
 type RulesWrapper struct {
 	Extends []types.RuleDefaults  `yaml:"extends,omitempty"`
-	Rules   map[string]types.Rule `yaml:"rules"`
+	Rules   map[string]types.Rule `yaml:"rules,omitempty"`
+}
+
+func (rw *RulesWrapper) CheckRules() error {
+	if len(rw.Rules) == 0 && len(rw.Extends) == 0 {
+		return fmt.Errorf("no rules to merge, rules and extends are empty invalid rules")
+	}
+	return nil
 }
 
 func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
+
+	if rw.Rules == nil {
+		rw.Rules = make(map[string]types.Rule)
+	}
+
 	merged, err := getExtendedRules(rw.Extends)
 	if err != nil {
 		return nil, err

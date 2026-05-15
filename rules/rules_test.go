@@ -21,6 +21,53 @@ func TestDefaultRulesRecommended(t *testing.T) {
 	}
 }
 
+func TestRulesYAMLEmptyRulesWithExtends(t *testing.T) {
+	// rules.yml-style document with only `extends:` and no `rules:` map.
+	// CheckRules must accept it and ResolvedRules must return the inherited set.
+	src := []byte(`extends:
+  - recommended
+`)
+
+	var rw RulesWrapper
+	if err := yaml.Unmarshal(src, &rw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rw.Rules != nil {
+		t.Fatalf("expected nil Rules map from yaml, got %#v", rw.Rules)
+	}
+	if err := rw.CheckRules(); err != nil {
+		t.Fatalf("CheckRules should accept empty rules when extends is set: %v", err)
+	}
+
+	merged, err := rw.ResolvedRules()
+	if err != nil {
+		t.Fatalf("ResolvedRules: %v", err)
+	}
+	for _, name := range []string{"info-title", "method-description", "method-errors", "method-examples"} {
+		if _, ok := merged[name]; !ok {
+			t.Errorf("expected inherited rule %q from recommended extension", name)
+		}
+	}
+}
+
+func TestRulesYAMLEmptyRulesAndExtendsRejected(t *testing.T) {
+	// rules.yml-style document with neither `rules:` nor `extends:`.
+	src := []byte(`description: "empty"
+`)
+
+	var rw RulesWrapper
+	if err := yaml.Unmarshal(src, &rw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	err := rw.CheckRules()
+	if err == nil {
+		t.Fatal("expected CheckRules to reject empty rules and extends")
+	}
+	if !strings.Contains(err.Error(), "no rules to merge") {
+		t.Errorf("expected 'no rules to merge' error, got: %v", err)
+	}
+}
+
 func TestResolvedRulesExtends(t *testing.T) {
 	rw := &RulesWrapper{
 		Extends: []types.RuleDefaults{types.RuleExtensionRecommended},

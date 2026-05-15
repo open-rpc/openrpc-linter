@@ -80,7 +80,13 @@ func RunLint(opts LintOptions) error {
 		return err
 	}
 
+	err = rulesWrapper.CheckRules()
+	if err != nil {
+		fmt.Fprintf(opts.Output, "Error checking rules file: %v\n", err)
+		return err
+	}
 	rulesWrapper.Rules, err = rulesWrapper.ResolvedRules()
+
 	if err != nil {
 		return err
 	}
