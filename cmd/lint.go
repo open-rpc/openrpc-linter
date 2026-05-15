@@ -12,17 +12,12 @@ import (
 	"github.com/open-rpc/openrpc-linter/types"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var (
 	rulesFile    string
 	outputFormat string
 )
-
-type RulesWrapper struct {
-	Rules map[string]types.Rule `yaml:"rules"`
-}
 
 type LintOptions struct {
 	OpenRPCFile string
@@ -80,18 +75,19 @@ func RunLint(opts LintOptions) error {
 		return err
 	}
 
-	// get the rules from file
-	rawRules, err := os.ReadFile(opts.RulesFile)
+	rulesWrapper, err := rules.LoadRulesFileFromPath(opts.RulesFile)
 	if err != nil {
-		fmt.Fprintf(opts.Output, "Error reading rules file: %v\n", err)
 		return err
 	}
 
-	// parse the rules
-	var rulesWrapper RulesWrapper
-	err = yaml.Unmarshal(rawRules, &rulesWrapper)
+	err = rulesWrapper.CheckRules()
 	if err != nil {
-		fmt.Fprintf(opts.Output, "Error parsing rules file: %v\n", err)
+		fmt.Fprintf(opts.Output, "Error checking rules file: %v\n", err)
+		return err
+	}
+	rulesWrapper.Rules, err = rulesWrapper.ResolvedRules()
+
+	if err != nil {
 		return err
 	}
 
