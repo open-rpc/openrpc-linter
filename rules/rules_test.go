@@ -9,6 +9,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestDefaultRulesRecommended(t *testing.T) {
+	w, err := LoadRulesFile(GetRuleDefaultsFS(), "recommended.yaml")
+	if err != nil {
+		t.Fatalf("load recommended: %v", err)
+	}
+	for _, name := range []string{"info-title", "method-description", "method-errors", "method-examples"} {
+		if _, ok := w.Rules[name]; !ok {
+			t.Errorf("missing rule %q", name)
+		}
+	}
+}
+
+func TestResolvedRulesExtends(t *testing.T) {
+	rw := &RulesWrapper{
+		Extends: []types.RuleDefaults{types.RuleExtensionRecommended},
+		Rules: map[string]types.Rule{
+			"info-title": {Description: "override", Given: "$.info", Then: &types.RuleAction{Field: "title", Function: "truthy"}},
+		},
+	}
+	merged, err := rw.ResolvedRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged["info-title"].Then.Field != "title" {
+		t.Errorf("user rule should override recommended, got %+v", merged["info-title"])
+	}
+	if _, ok := merged["method-errors"]; !ok {
+		t.Errorf("expected recommended rule method-errors to be merged in")
+	}
+}
+
 func TestExecuteRule(t *testing.T) {
 	tests := []struct {
 		name        string

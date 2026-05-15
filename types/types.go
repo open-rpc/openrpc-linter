@@ -12,6 +12,12 @@ const (
 	SeverityInfo  Severity = "info"
 )
 
+type RuleDefaults string
+
+const (
+	RuleExtensionRecommended RuleDefaults = "recommended"
+)
+
 type Rule struct {
 	Description string      `json:"description" yaml:"description"`
 	Given       string      `json:"given,omitempty" yaml:"given,omitempty"`
