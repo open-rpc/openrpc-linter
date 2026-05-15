@@ -1,0 +1,180 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "Duplicate Stress Test API",
+    "version": "1.0.0",
+    "description": "Fixture document intentionally violating uniqueness rules."
+  },
+  "methods": [
+    {
+      "name": "getBalance",
+      "summary": "Fetch account balance",
+      "description": "Returns the current account balance.",
+      "params": [
+        {
+          "name": "accountId",
+          "description": "Primary account identifier",
+          "required": true,
+          "schema": {
+            "title": "Account ID",
+            "type": "string"
+          }
+        },
+        {
+          "name": "accountId",
+          "description": "Duplicate account identifier param",
+          "required": false,
+          "schema": {
+            "title": "Account ID (optional)",
+            "type": "string"
+          }
+        }
+      ],
+      "errors": [
+        {
+          "code": 1001,
+          "message": "Invalid account"
+        },
+        {
+          "code": 1001,
+          "message": "Account missing"
+        }
+      ],
+      "examples": [
+        {
+          "name": "basic-request",
+          "description": "Basic request example",
+          "params": [
+            {
+              "name": "accountId",
+              "value": "abc-123"
+            }
+          ],
+          "result": {
+            "name": "balance",
+            "value": "100"
+          }
+        },
+        {
+          "name": "basic-request",
+          "description": "Duplicate example name",
+          "params": [
+            {
+              "name": "accountId",
+              "value": "def-456"
+            }
+          ],
+          "result": {
+            "name": "balance",
+            "value": "250"
+          }
+        }
+      ],
+      "result": {
+        "name": "balance",
+        "description": "Account balance result",
+        "schema": {
+          "title": "Balance",
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "getBalance",
+      "summary": "Fetch account balance",
+      "description": "Second method duplicates name and summary.",
+      "params": [
+        {
+          "name": "accountId",
+          "description": "Account id in second method",
+          "required": true,
+          "schema": {
+            "title": "Account ID",
+            "type": "string"
+          }
+        }
+      ],
+      "errors": [
+        {
+          "code": 2002,
+          "message": "Unauthorized"
+        }
+      ],
+      "examples": [
+        {
+          "name": "secondary-request",
+          "description": "Secondary request example",
+          "params": [
+            {
+              "name": "accountId",
+              "value": "xyz-999"
+            }
+          ],
+          "result": {
+            "name": "balance",
+            "value": "50"
+          }
+        }
+      ],
+      "result": {
+        "name": "balance",
+        "description": "Account balance result",
+        "schema": {
+          "title": "Balance",
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "components": {
+    "contentDescriptors": [
+      {
+        "name": "accountId",
+        "description": "Global account id descriptor",
+        "required": true,
+        "schema": {
+          "title": "Account ID",
+          "type": "string"
+        }
+      },
+      {
+        "name": "accountId",
+        "description": "Duplicate global account id descriptor",
+        "required": false,
+        "schema": {
+          "title": "Account ID Optional",
+          "type": "string"
+        }
+      }
+    ],
+    "schemas": {
+      "BalanceResult": {
+        "title": "Balance Schema",
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceResponse": {
+        "title": "Balance Schema",
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string"
+          }
+        }
+      },
+      "UniqueSchema": {
+        "title": "Unique Schema Title",
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

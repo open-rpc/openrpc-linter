@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/open-rpc/openrpc-linter/functions"
 	"github.com/open-rpc/openrpc-linter/types"
@@ -32,6 +33,10 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 	}
 
 	var allResults []types.RuleFunctionResult
+	if rule.Then.Function == "unique" {
+		return executeUniqueRule(rule, context, document, ruleFunc)
+	}
+
 	for _, node := range path.SelectLocated(document) {
 		valueToValidate := node.Node
 		if rule.Then.Field != "" {
@@ -60,6 +65,60 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 	}
 
 	return allResults, nil
+}
+
+func executeUniqueRule(
+	rule *types.Rule,
+	context types.RuleFunctionContext,
+	document interface{},
+	ruleFunc types.RuleFunction,
+) ([]types.RuleFunctionResult, error) {
+	collections, err := getUniqueCollections(rule.Given, document)
+	if err != nil {
+		return nil, err
+	}
+
+	var allResults []types.RuleFunctionResult
+	for _, collection := range collections {
+		results := ruleFunc.RunRule(collection, context)
+		for _, result := range results {
+			if result.Message != "" {
+				allResults = append(allResults, result)
+			}
+		}
+	}
+
+	return allResults, nil
+}
+
+func getUniqueCollections(given string, document interface{}) ([][]interface{}, error) {
+	parentPath := strings.TrimSpace(given)
+	if strings.HasSuffix(parentPath, "[*]") {
+		parentPath = strings.TrimSuffix(parentPath, "[*]")
+	}
+
+	path, err := jsonpath.Parse(parentPath)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing unique parent JSON path: %w", err)
+	}
+
+	var collections [][]interface{}
+	for _, node := range path.SelectLocated(document) {
+		switch v := node.Node.(type) {
+		case []interface{}:
+			collections = append(collections, v)
+		case map[string]interface{}:
+			collection := make([]interface{}, 0, len(v))
+			for _, item := range v {
+				collection = append(collection, item)
+			}
+			collections = append(collections, collection)
+		default:
+			return nil, fmt.Errorf("unique function requires array-like JSONPath selection")
+		}
+	}
+
+	return collections, nil
 }
 
 func GetFieldFromNode(node *yaml.Node, field string) *yaml.Node {
