@@ -2,17 +2,14 @@ package rules
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 
 	"github.com/open-rpc/openrpc-linter/functions"
 	"github.com/open-rpc/openrpc-linter/types"
 
 	"github.com/theory/jsonpath"
+	"github.com/theory/jsonpath/spec"
 	"gopkg.in/yaml.v3"
 )
-
-var normalizedArrayIndexPattern = regexp.MustCompile(`\[(\d+)\]$`)
 
 func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, error) {
 	if rule.Then == nil {
@@ -44,8 +41,11 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 		}
 
 		itemContext := context
-		if arrayIndex, ok := arrayIndexFromNormalizedPath(node.Path.String()); ok {
-			itemContext.ArrayIndex = &arrayIndex
+		if segs := node.Path; len(segs) > 0 {
+			if idx, ok := segs[len(segs)-1].(spec.Index); ok {
+				i := int(idx)
+				itemContext.ArrayIndex = &i
+			}
 		}
 
 		for _, result := range ruleFunc.RunRule(valueToValidate, itemContext) {
@@ -60,20 +60,6 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 	}
 
 	return allResults, nil
-}
-
-func arrayIndexFromNormalizedPath(path string) (int, bool) {
-	matches := normalizedArrayIndexPattern.FindStringSubmatch(path)
-	if len(matches) != 2 {
-		return 0, false
-	}
-
-	index, err := strconv.Atoi(matches[1])
-	if err != nil {
-		return 0, false
-	}
-
-	return index, true
 }
 
 func GetFieldFromNode(node *yaml.Node, field string) *yaml.Node {
