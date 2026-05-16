@@ -29,6 +29,10 @@ build: ## Build the linter
 test: ## Run tests
 	go test ./...
 
+.PHONY: test-e2e
+test-e2e: ## Run Godog e2e tests
+	go test ./e2e
+
 .PHONY: test-race
 test-race: ## Run tests with race detector
 	go test -race ./...

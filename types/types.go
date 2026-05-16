@@ -27,9 +27,9 @@ type Rule struct {
 }
 
 type RuleAction struct {
-	Field           string                 `json:"field,omitempty"`
-	Function        string                 `json:"function,omitempty"`
-	FunctionOptions map[string]interface{} `json:"functionOptions,omitempty"`
+	Field           string                 `json:"field,omitempty" yaml:"field,omitempty"`
+	Function        string                 `json:"function,omitempty" yaml:"function,omitempty"`
+	FunctionOptions map[string]interface{} `json:"functionOptions,omitempty" yaml:"functionOptions,omitempty"`
 }
 
 type RuleFunctionResult struct {

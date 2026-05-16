@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -93,8 +94,9 @@ func TestExecuteRule(t *testing.T) {
 		rule        *types.Rule
 		document    interface{}
 		context     types.RuleFunctionContext
-		expectError bool
-		expectedMsg string
+		expectError  bool
+		expectedMsg  string
+		expectedPath []string
 	}{
 		{
 			name: "truthy rule with missing field",
@@ -117,6 +119,27 @@ func TestExecuteRule(t *testing.T) {
 			expectedMsg: "Missing required field 'description' at $.info",
 		},
 		{
+			name: "truthy rule with missing field on selected method includes path",
+			rule: &types.Rule{
+				Description: "Test missing method description",
+				Given:       "$.methods[*]",
+				Then: &types.RuleAction{
+					Field:    "description",
+					Function: "truthy",
+				},
+			},
+			document: map[string]interface{}{
+				"methods": []interface{}{
+					map[string]interface{}{
+						"name": "ping",
+					},
+				},
+			},
+			expectError:  true,
+			expectedMsg:  "Missing required field 'description' at $.methods[0]",
+			expectedPath: []string{"$['methods'][0]"},
+		},
+		{
 			name: "truthy rule with present field",
 			rule: &types.Rule{
 				Description: "Test present field",
@@ -134,6 +157,25 @@ func TestExecuteRule(t *testing.T) {
 				},
 			},
 			expectError: false,
+		},
+		{
+			name: "schema rule with invalid methods length",
+			rule: &types.Rule{
+				Description: "Test methods length",
+				Given:       "$.methods",
+				Then: &types.RuleAction{
+					Function: "schema",
+					FunctionOptions: map[string]interface{}{
+						"type":     "array",
+						"minItems": 1,
+					},
+				},
+			},
+			document: map[string]interface{}{
+				"methods": []interface{}{},
+			},
+			expectError: true,
+			expectedMsg: "Value does not match schema:",
 		},
 		{
 			name: "unknown function",
@@ -154,9 +196,9 @@ func TestExecuteRule(t *testing.T) {
 			expectedMsg: "unknown function: unknownFunction",
 		},
 		{
-			name: "invalid jsonpath",
+			name: "jsonpath with no matches",
 			rule: &types.Rule{
-				Description: "Test invalid path",
+				Description: "Test missing path",
 				Given:       "$.nonexistent",
 				Then: &types.RuleAction{
 					Field:    "title",
@@ -168,8 +210,25 @@ func TestExecuteRule(t *testing.T) {
 					"title": "Test API",
 				},
 			},
-			expectError: true, // Should expect error for invalid jsonpath
-			expectedMsg: "error getting JSON path: unknown key nonexistent",
+			expectError: false,
+		},
+		{
+			name: "invalid jsonpath",
+			rule: &types.Rule{
+				Description: "Test invalid path",
+				Given:       "$.info[",
+				Then: &types.RuleAction{
+					Field:    "title",
+					Function: "truthy",
+				},
+			},
+			document: map[string]interface{}{
+				"info": map[string]interface{}{
+					"title": "Test API",
+				},
+			},
+			expectError: true,
+			expectedMsg: "error parsing JSON path:",
 		},
 	}
 
@@ -188,11 +247,19 @@ func TestExecuteRule(t *testing.T) {
 				if err == nil && (len(results) == 0 || (len(results) > 0 && (results[0].Message == "" || results[0].Message == "Result: <nil>"))) {
 					t.Errorf("Expected error message, but got results: %+v, err: %+v", results, err)
 				}
-				if tt.expectedMsg != "" && err != nil && err.Error() != tt.expectedMsg {
-					t.Errorf("Expected error message %q, got %q", tt.expectedMsg, err.Error())
+				if tt.expectedMsg != "" && err != nil && !strings.HasPrefix(err.Error(), tt.expectedMsg) {
+					t.Errorf("Expected error message prefix %q, got %q", tt.expectedMsg, err.Error())
 				}
-				if tt.expectedMsg != "" && err == nil && len(results) > 0 && results[0].Message != tt.expectedMsg {
-					t.Errorf("Expected result message %q, got %q", tt.expectedMsg, results[0].Message)
+				if tt.expectedMsg != "" && err == nil && len(results) > 0 && !strings.HasPrefix(results[0].Message, tt.expectedMsg) {
+					t.Errorf("Expected result message prefix %q, got %q", tt.expectedMsg, results[0].Message)
+				}
+				if tt.expectedPath != nil {
+					if len(results) != 1 {
+						t.Fatalf("Expected one result, got %+v", results)
+					}
+					if !reflect.DeepEqual(results[0].Path, tt.expectedPath) {
+						t.Fatalf("Expected path %+v, got %+v", tt.expectedPath, results[0].Path)
+					}
 				}
 			} else {
 				if err != nil {

@@ -10,4 +10,5 @@ func init() {
 
 func RegisterFunctions() {
 	FunctionRegistry["truthy"] = &TruthyRule{}
+	FunctionRegistry["schema"] = &SchemaRule{}
 }
