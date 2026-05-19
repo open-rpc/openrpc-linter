@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/open-rpc/openrpc-linter/types"
@@ -108,6 +109,55 @@ rules:
 
 	if len(results) != 0 {
 		t.Fatalf("expected no results when each method has unique param names, got: %+v", results)
+	}
+}
+
+func TestRunLintUniqueWarnSeverityReportsViolationWithoutFailing(t *testing.T) {
+	openrpcContent := `{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "Warn Unique Test API",
+    "version": "1.0.0"
+  },
+  "methods": [
+    {
+      "name": "firstMethod",
+      "summary": "Shared summary"
+    },
+    {
+      "name": "secondMethod",
+      "summary": "Shared summary"
+    }
+  ]
+}`
+
+	rulesContent := `description: "Warning unique rules"
+rules:
+  unique-method-summaries:
+    description: "Method summaries should be unique"
+    given: "$.methods[*]"
+    severity: "warn"
+    then:
+      field: "summary"
+      function: "unique"
+`
+
+	results, err := runLintJSON(t, openrpcContent, rulesContent)
+	if err != nil {
+		t.Fatalf("expected warn-only duplicate to report without failing, got: %v\nresults: %+v", err, results)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected one warning result, got: %+v", results)
+	}
+	if results[0].RuleID != "unique-method-summaries" {
+		t.Fatalf("expected rule id to be set, got: %+v", results[0])
+	}
+	if results[0].Message != `Duplicate value for field 'summary': "Shared summary"` {
+		t.Fatalf("unexpected warning message: %+v", results[0])
+	}
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods']"}) {
+		t.Fatalf("expected JSON output to include collection path, got: %+v", results[0].Path)
 	}
 }
 

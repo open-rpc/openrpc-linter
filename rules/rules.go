@@ -80,9 +80,12 @@ func executeUniqueRule(
 
 	var allResults []types.RuleFunctionResult
 	for _, collection := range collections {
-		results := ruleFunc.RunRule(collection, context)
+		results := ruleFunc.RunRule(collection.Items, context)
 		for _, result := range results {
 			if result.Message != "" {
+				if len(result.Path) == 0 {
+					result.Path = []string{collection.Path}
+				}
 				allResults = append(allResults, result)
 			}
 		}
@@ -91,7 +94,12 @@ func executeUniqueRule(
 	return allResults, nil
 }
 
-func getUniqueCollections(given string, document interface{}) ([][]interface{}, error) {
+type uniqueCollection struct {
+	Items []interface{}
+	Path  string
+}
+
+func getUniqueCollections(given string, document interface{}) ([]uniqueCollection, error) {
 	parentPath := strings.TrimSpace(given)
 	if strings.HasSuffix(parentPath, "[*]") {
 		parentPath = strings.TrimSuffix(parentPath, "[*]")
@@ -102,17 +110,23 @@ func getUniqueCollections(given string, document interface{}) ([][]interface{}, 
 		return nil, fmt.Errorf("error parsing unique parent JSON path: %w", err)
 	}
 
-	var collections [][]interface{}
+	var collections []uniqueCollection
 	for _, node := range path.SelectLocated(document) {
 		switch v := node.Node.(type) {
 		case []interface{}:
-			collections = append(collections, v)
+			collections = append(collections, uniqueCollection{
+				Items: v,
+				Path:  node.Path.String(),
+			})
 		case map[string]interface{}:
 			collection := make([]interface{}, 0, len(v))
 			for _, item := range v {
 				collection = append(collection, item)
 			}
-			collections = append(collections, collection)
+			collections = append(collections, uniqueCollection{
+				Items: collection,
+				Path:  node.Path.String(),
+			})
 		default:
 			return nil, fmt.Errorf("unique function requires array-like JSONPath selection")
 		}

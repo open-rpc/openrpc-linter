@@ -90,10 +90,10 @@ func TestResolvedRulesExtends(t *testing.T) {
 
 func TestExecuteRule(t *testing.T) {
 	tests := []struct {
-		name        string
-		rule        *types.Rule
-		document    interface{}
-		context     types.RuleFunctionContext
+		name         string
+		rule         *types.Rule
+		document     interface{}
+		context      types.RuleFunctionContext
 		expectError  bool
 		expectedMsg  string
 		expectedPath []string
@@ -273,6 +273,114 @@ func TestExecuteRule(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecuteRuleUniqueUsesResolvedDocumentAndAddsCollectionPath(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Unique resolved method names",
+		Given:       "$.methods[*]",
+		Then: &types.RuleAction{
+			Field:    "name",
+			Function: "unique",
+		},
+	}
+	originalDocument := map[string]interface{}{
+		"methods": []interface{}{
+			map[string]interface{}{"name": "ping"},
+			map[string]interface{}{"name": "pong"},
+		},
+	}
+	resolvedDocument := map[string]interface{}{
+		"methods": []interface{}{
+			map[string]interface{}{"name": "ping"},
+			map[string]interface{}{"name": "ping"},
+		},
+	}
+
+	results, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:             rule,
+		Document:         originalDocument,
+		ResolvedDocument: resolvedDocument,
+	})
+	if err != nil {
+		t.Fatalf("expected unique rule to execute successfully, got: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one duplicate result from resolved document, got %+v", results)
+	}
+	if results[0].Message != `Duplicate value for field 'name': "ping"` {
+		t.Fatalf("unexpected duplicate message: %+v", results)
+	}
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods']"}) {
+		t.Fatalf("expected collection path on unique result, got %+v", results[0].Path)
+	}
+}
+
+func TestExecuteRuleUniqueScopesNestedWildcardCollections(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Unique param names per method",
+		Given:       "$.methods[*].params[*]",
+		Then: &types.RuleAction{
+			Field:    "name",
+			Function: "unique",
+		},
+	}
+	document := map[string]interface{}{
+		"methods": []interface{}{
+			map[string]interface{}{
+				"name": "first",
+				"params": []interface{}{
+					map[string]interface{}{"name": "id"},
+				},
+			},
+			map[string]interface{}{
+				"name": "second",
+				"params": []interface{}{
+					map[string]interface{}{"name": "id"},
+					map[string]interface{}{"name": "id"},
+				},
+			},
+		},
+	}
+
+	results, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:     rule,
+		Document: document,
+	})
+	if err != nil {
+		t.Fatalf("expected unique rule to execute successfully, got: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one duplicate result scoped to the second method, got %+v", results)
+	}
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods'][1]['params']"}) {
+		t.Fatalf("expected nested collection path, got %+v", results[0].Path)
+	}
+}
+
+func TestExecuteRuleUniqueRejectsNonCollectionSelection(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Invalid unique target",
+		Given:       "$.info.title",
+		Then: &types.RuleAction{
+			Field:    "name",
+			Function: "unique",
+		},
+	}
+	document := map[string]interface{}{
+		"info": map[string]interface{}{"title": "Example"},
+	}
+
+	_, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:     rule,
+		Document: document,
+	})
+	if err == nil {
+		t.Fatal("expected unique rule to reject non-collection JSONPath selections")
+	}
+	if err.Error() != "unique function requires array-like JSONPath selection" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
