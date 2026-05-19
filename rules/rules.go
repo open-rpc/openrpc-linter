@@ -34,13 +34,14 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 	var allResults []types.RuleFunctionResult
 	for _, node := range path.SelectLocated(document) {
 		valueToValidate := node.Node
-		if rule.Then.Field != "" {
+		if rule.Then.Function != "unique" && rule.Then.Field != "" {
 			if itemMap, ok := node.Node.(map[string]interface{}); ok {
 				valueToValidate = itemMap[rule.Then.Field]
 			}
 		}
 
 		itemContext := context
+		itemContext.Path = node.Path.String()
 		if segs := node.Path; len(segs) > 0 {
 			if idx, ok := segs[len(segs)-1].(spec.Index); ok {
 				i := int(idx)

@@ -46,3 +46,52 @@ rules:
       functionOptions:
         type: "array"
         minItems: 1
+  unique-method-names:
+    description: "Method names must be unique."
+    given: "$.methods"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+  unique-method-summary:
+    description: "Method summaries should be unique."
+    given: "$.methods"
+    severity: "warn"
+    then:
+      field: "summary"
+      function: "unique"
+  unique-param-names-per-method:
+    description: "Param names should be unique within each method."
+    given: "$.methods[*].params"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+  unique-error-codes-per-method:
+    description: "Error codes should be unique within each method."
+    given: "$.methods[*].errors"
+    severity: "error"
+    then:
+      field: "code"
+      function: "unique"
+  unique-example-names-per-method:
+    description: "Example names should be unique within each method."
+    given: "$.methods[*].examples"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+  unique-content-descriptor-names:
+    description: "Content descriptor names should be unique."
+    given: "$.components.contentDescriptors"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+  unique-schema-titles:
+    description: "Schema titles should be unique."
+    given: "$.components.schemas"
+    severity: "error"
+    then:
+      field: "title"
+      function: "unique"

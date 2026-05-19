@@ -32,10 +32,6 @@ func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContex
 	return nil
 }
 
-func (r *SchemaRule) GetSchema() *jsonschema.Schema {
-	return &jsonschema.Schema{}
-}
-
 // schemaFor caches one compiled schema per rule action so iterating over N
 // matched nodes doesn't recompile N times.
 func (r *SchemaRule) schemaFor(then *types.RuleAction) (*jsonschema.Schema, error) {
