@@ -11,4 +11,5 @@ func init() {
 func RegisterFunctions() {
 	FunctionRegistry["truthy"] = &TruthyRule{}
 	FunctionRegistry["schema"] = &SchemaRule{}
+	FunctionRegistry["unique"] = &UniqueRule{}
 }

@@ -37,3 +37,31 @@ rules:
       field: "description"
       function: "truthy"
 ```
+
+The built-in functions currently include:
+
+- `truthy`: require a field or selected value to be present and non-empty
+- `unique`: require a field value to be unique across the selected collection
+
+Example `unique` rules:
+
+```yaml
+rules:
+  unique-method-names:
+    description: "Method names must be unique"
+    given: "$.methods[*]"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+
+  unique-param-names-per-method:
+    description: "Param names should be unique within each method"
+    given: "$.methods[*].params[*]"
+    severity: "error"
+    then:
+      field: "name"
+      function: "unique"
+```
+
+`unique` supports `then.functionOptions.ignoreMissing`, which defaults to `true`.

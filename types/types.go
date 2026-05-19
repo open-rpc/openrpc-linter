@@ -33,10 +33,19 @@ type RuleAction struct {
 }
 
 type RuleFunctionResult struct {
-	Message string   `json:"message,omitempty"`
-	Path    []string `json:"path,omitempty"`
-	RuleID  string   `json:"ruleId,omitempty"`
+	Message  string     `json:"message,omitempty"`
+	Path     []string   `json:"path,omitempty"`
+	RuleID   string     `json:"ruleId,omitempty"`
+	Severity Severity   `json:"severity,omitempty"`
+	Kind     ResultKind `json:"kind,omitempty"`
 }
+
+type ResultKind string
+
+const (
+	ResultKindLint      ResultKind = "lint"
+	ResultKindRuleError ResultKind = "rule-error"
+)
 
 type RuleFunctionSchema struct {
 	Name        string                 `json:"name"`
