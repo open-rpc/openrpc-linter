@@ -20,7 +20,7 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	}
 	fieldName := context.Rule.Then.Field
 
-	items, ok := value.([]interface{})
+	items, ok := uniqueItems(value)
 	if !ok {
 		return []types.RuleFunctionResult{{
 			Message: "unique function requires array input",
@@ -79,6 +79,21 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	}
 
 	return results
+}
+
+func uniqueItems(value interface{}) ([]interface{}, bool) {
+	switch v := value.(type) {
+	case []interface{}:
+		return v, true
+	case map[string]interface{}:
+		items := make([]interface{}, 0, len(v))
+		for _, item := range v {
+			items = append(items, item)
+		}
+		return items, true
+	default:
+		return nil, false
+	}
 }
 
 func (r *UniqueRule) GetSchema() *jsonschema.Schema {

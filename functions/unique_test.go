@@ -70,7 +70,7 @@ func TestUniqueRule(t *testing.T) {
 		{
 			name:     "requires array input",
 			field:    "name",
-			value:    map[string]interface{}{"name": "ping"},
+			value:    "ping",
 			expected: []string{"unique function requires array input"},
 		},
 		{

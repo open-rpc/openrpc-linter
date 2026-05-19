@@ -95,7 +95,7 @@ func TestRunLintUniquePerMethodRulesDoNotLeakAcrossMethods(t *testing.T) {
 rules:
   unique-param-names-per-method:
     description: "Param names should be unique within each method"
-    given: "$.methods[*].params[*]"
+    given: "$.methods[*].params"
     severity: "error"
     then:
       field: "name"
@@ -135,7 +135,7 @@ func TestRunLintUniqueWarnSeverityReportsViolationWithoutFailing(t *testing.T) {
 rules:
   unique-method-summaries:
     description: "Method summaries should be unique"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "warn"
     then:
       field: "summary"
@@ -175,7 +175,7 @@ func TestRunLintUniqueInvalidArrayItemsReportError(t *testing.T) {
 rules:
   unique-tags:
     description: "Tags should be unique"
-    given: "$.tags[*]"
+    given: "$.tags"
     severity: "error"
     then:
       field: "name"
@@ -213,7 +213,7 @@ func TestRunLintUniqueIgnoreMissingDefaultsToTrue(t *testing.T) {
 rules:
   unique-method-summaries:
     description: "Method summaries should be unique"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "error"
     then:
       field: "summary"
@@ -251,7 +251,7 @@ func TestRunLintUniqueIgnoreMissingFalseTreatsMissingAsDuplicates(t *testing.T) 
 rules:
   unique-method-summaries:
     description: "Method summaries should be unique"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "error"
     then:
       field: "summary"
@@ -292,7 +292,7 @@ func TestRunLintUniqueRequiresThenField(t *testing.T) {
 rules:
   unique-methods:
     description: "Methods should be unique somehow"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "error"
     then:
       function: "unique"
@@ -339,7 +339,7 @@ func TestRunLintUniqueRejectsNonPrimitiveFieldValues(t *testing.T) {
 rules:
   unique-method-result:
     description: "Method results should be unique"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "error"
     then:
       field: "result"

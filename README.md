@@ -49,7 +49,7 @@ Example `unique` rules:
 rules:
   unique-method-names:
     description: "Method names must be unique"
-    given: "$.methods[*]"
+    given: "$.methods"
     severity: "error"
     then:
       field: "name"
@@ -57,7 +57,7 @@ rules:
 
   unique-param-names-per-method:
     description: "Param names should be unique within each method"
-    given: "$.methods[*].params[*]"
+    given: "$.methods[*].params"
     severity: "error"
     then:
       field: "name"
