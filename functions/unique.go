@@ -2,7 +2,9 @@ package functions
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/open-rpc/openrpc-linter/types"
 
@@ -15,16 +17,16 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	if context.Rule == nil || context.Rule.Then == nil || context.Rule.Then.Field == "" {
 		return []types.RuleFunctionResult{{
 			Message: "unique function requires then.field",
-			Path:    []string{},
+			Path:    resultPath(context.Path),
 		}}
 	}
 	fieldName := context.Rule.Then.Field
 
-	items, ok := uniqueItems(value)
+	items, ok := uniqueItems(value, context.Path)
 	if !ok {
 		return []types.RuleFunctionResult{{
 			Message: "unique function requires array input",
-			Path:    []string{},
+			Path:    resultPath(context.Path),
 		}}
 	}
 
@@ -41,11 +43,11 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	var results []types.RuleFunctionResult
 
 	for _, item := range items {
-		itemMap, ok := item.(map[string]interface{})
+		itemMap, ok := item.Value.(map[string]interface{})
 		if !ok {
 			results = append(results, types.RuleFunctionResult{
 				Message: fmt.Sprintf("unique function requires object items to read field '%s'", fieldName),
-				Path:    []string{},
+				Path:    resultPath(item.Path),
 			})
 			continue
 		}
@@ -62,7 +64,7 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		if !supported {
 			results = append(results, types.RuleFunctionResult{
 				Message: fmt.Sprintf("unique function does not support non-primitive value for field '%s'", fieldName),
-				Path:    []string{},
+				Path:    resultPath(fieldPath(item.Path, fieldName)),
 			})
 			continue
 		}
@@ -70,7 +72,7 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		if _, found := seen[key]; found {
 			results = append(results, types.RuleFunctionResult{
 				Message: fmt.Sprintf("Duplicate value for field '%s': %s", fieldName, displayValue),
-				Path:    []string{},
+				Path:    resultPath(fieldPath(item.Path, fieldName)),
 			})
 			continue
 		}
@@ -81,19 +83,60 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	return results
 }
 
-func uniqueItems(value interface{}) ([]interface{}, bool) {
+type uniqueItem struct {
+	Value interface{}
+	Path  string
+}
+
+func uniqueItems(value interface{}, basePath string) ([]uniqueItem, bool) {
 	switch v := value.(type) {
 	case []interface{}:
-		return v, true
+		items := make([]uniqueItem, 0, len(v))
+		for i, item := range v {
+			items = append(items, uniqueItem{
+				Value: item,
+				Path:  fmt.Sprintf("%s[%d]", basePath, i),
+			})
+		}
+		return items, true
 	case map[string]interface{}:
-		items := make([]interface{}, 0, len(v))
-		for _, item := range v {
-			items = append(items, item)
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		items := make([]uniqueItem, 0, len(v))
+		for _, key := range keys {
+			items = append(items, uniqueItem{
+				Value: v[key],
+				Path:  basePath + pathNameSegment(key),
+			})
 		}
 		return items, true
 	default:
 		return nil, false
 	}
+}
+
+func resultPath(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	return []string{path}
+}
+
+func fieldPath(basePath string, fieldName string) string {
+	if basePath == "" {
+		return ""
+	}
+	return basePath + pathNameSegment(fieldName)
+}
+
+func pathNameSegment(name string) string {
+	escaped := strings.ReplaceAll(name, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	return "['" + escaped + "']"
 }
 
 func (r *UniqueRule) GetSchema() *jsonschema.Schema {

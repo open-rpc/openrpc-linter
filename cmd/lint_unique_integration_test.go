@@ -156,8 +156,8 @@ rules:
 	if results[0].Message != `Duplicate value for field 'summary': "Shared summary"` {
 		t.Fatalf("unexpected warning message: %+v", results[0])
 	}
-	if !reflect.DeepEqual(results[0].Path, []string{"$['methods']"}) {
-		t.Fatalf("expected JSON output to include collection path, got: %+v", results[0].Path)
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods'][1]['summary']"}) {
+		t.Fatalf("expected JSON output to include duplicate field path, got: %+v", results[0].Path)
 	}
 }
 
@@ -189,6 +189,11 @@ rules:
 
 	if len(results) == 0 {
 		t.Fatalf("expected at least one result for invalid primitive selections")
+	}
+	for _, result := range results {
+		if len(result.Path) == 0 {
+			t.Fatalf("expected invalid primitive result to include item path, got: %+v", results)
+		}
 	}
 }
 
@@ -310,6 +315,9 @@ rules:
 	if results[0].Message != "unique function requires then.field" {
 		t.Fatalf("unexpected configuration error message: %+v", results)
 	}
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods']"}) {
+		t.Fatalf("expected configuration error to include selected collection path, got: %+v", results[0].Path)
+	}
 }
 
 func TestRunLintUniqueRejectsNonPrimitiveFieldValues(t *testing.T) {
@@ -358,6 +366,9 @@ rules:
 	for _, result := range results {
 		if result.Message != "unique function does not support non-primitive value for field 'result'" {
 			t.Fatalf("unexpected unsupported-value message: %+v", results)
+		}
+		if len(result.Path) == 0 {
+			t.Fatalf("expected unsupported-value result to include field path, got: %+v", results)
 		}
 	}
 }

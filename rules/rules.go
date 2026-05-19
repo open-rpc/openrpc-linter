@@ -41,6 +41,7 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 		}
 
 		itemContext := context
+		itemContext.Path = node.Path.String()
 		if segs := node.Path; len(segs) > 0 {
 			if idx, ok := segs[len(segs)-1].(spec.Index); ok {
 				i := int(idx)

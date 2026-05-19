@@ -50,6 +50,7 @@ type RuleFunctionContext struct {
 	Document         interface{} `json:"document"`         // Original document with potential $refs
 	ResolvedDocument interface{} `json:"resolvedDocument"` // Document with all $refs resolved
 	ArrayIndex       *int        `json:"arrayIndex,omitempty"`
+	Path             string      `json:"path,omitempty"` // Normalized path to the selected node.
 }
 
 type RuleFunction interface {

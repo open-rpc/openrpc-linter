@@ -276,7 +276,7 @@ func TestExecuteRule(t *testing.T) {
 	}
 }
 
-func TestExecuteRuleUniqueUsesResolvedDocumentAndAddsCollectionPath(t *testing.T) {
+func TestExecuteRuleUniqueUsesResolvedDocumentAndAddsFieldPath(t *testing.T) {
 	rule := &types.Rule{
 		Description: "Unique resolved method names",
 		Given:       "$.methods",
@@ -312,8 +312,8 @@ func TestExecuteRuleUniqueUsesResolvedDocumentAndAddsCollectionPath(t *testing.T
 	if results[0].Message != `Duplicate value for field 'name': "ping"` {
 		t.Fatalf("unexpected duplicate message: %+v", results)
 	}
-	if !reflect.DeepEqual(results[0].Path, []string{"$['methods']"}) {
-		t.Fatalf("expected collection path on unique result, got %+v", results[0].Path)
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods'][1]['name']"}) {
+		t.Fatalf("expected duplicate field path on unique result, got %+v", results[0].Path)
 	}
 }
 
@@ -354,8 +354,8 @@ func TestExecuteRuleUniqueScopesNestedWildcardCollections(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected one duplicate result scoped to the second method, got %+v", results)
 	}
-	if !reflect.DeepEqual(results[0].Path, []string{"$['methods'][1]['params']"}) {
-		t.Fatalf("expected nested collection path, got %+v", results[0].Path)
+	if !reflect.DeepEqual(results[0].Path, []string{"$['methods'][1]['params'][1]['name']"}) {
+		t.Fatalf("expected nested duplicate field path, got %+v", results[0].Path)
 	}
 }
 
@@ -390,8 +390,8 @@ func TestExecuteRuleUniqueHandlesMapBackedCollections(t *testing.T) {
 	if results[0].Message != `Duplicate value for field 'title': "Shared"` {
 		t.Fatalf("unexpected duplicate message: %+v", results)
 	}
-	if !reflect.DeepEqual(results[0].Path, []string{"$['components']['schemas']"}) {
-		t.Fatalf("expected map collection path, got %+v", results[0].Path)
+	if !reflect.DeepEqual(results[0].Path, []string{"$['components']['schemas']['Balance']['title']"}) {
+		t.Fatalf("expected map duplicate field path, got %+v", results[0].Path)
 	}
 }
 
