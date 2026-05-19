@@ -25,6 +25,19 @@ func TestUniqueRule(t *testing.T) {
 			expected: []string{`Duplicate value for field 'name': "ping"`},
 		},
 		{
+			name:  "reports every repeated duplicate after the first",
+			field: "name",
+			value: []interface{}{
+				map[string]interface{}{"name": "ping"},
+				map[string]interface{}{"name": "ping"},
+				map[string]interface{}{"name": "ping"},
+			},
+			expected: []string{
+				`Duplicate value for field 'name': "ping"`,
+				`Duplicate value for field 'name': "ping"`,
+			},
+		},
+		{
 			name:  "keeps primitive types distinct",
 			field: "value",
 			value: []interface{}{

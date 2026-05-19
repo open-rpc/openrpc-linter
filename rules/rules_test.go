@@ -359,6 +359,67 @@ func TestExecuteRuleUniqueScopesNestedWildcardCollections(t *testing.T) {
 	}
 }
 
+func TestExecuteRuleUniqueHandlesMapBackedCollections(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Unique schema titles",
+		Given:       "$.components.schemas[*]",
+		Then: &types.RuleAction{
+			Field:    "title",
+			Function: "unique",
+		},
+	}
+	document := map[string]interface{}{
+		"components": map[string]interface{}{
+			"schemas": map[string]interface{}{
+				"Balance": map[string]interface{}{"title": "Shared"},
+				"Amount":  map[string]interface{}{"title": "Shared"},
+			},
+		},
+	}
+
+	results, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:     rule,
+		Document: document,
+	})
+	if err != nil {
+		t.Fatalf("expected unique rule to execute successfully, got: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one duplicate result for map-backed collection, got %+v", results)
+	}
+	if results[0].Message != `Duplicate value for field 'title': "Shared"` {
+		t.Fatalf("unexpected duplicate message: %+v", results)
+	}
+	if !reflect.DeepEqual(results[0].Path, []string{"$['components']['schemas']"}) {
+		t.Fatalf("expected map collection path, got %+v", results[0].Path)
+	}
+}
+
+func TestExecuteRuleUniqueNoMatchesReturnsNoResults(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Unique missing schemas",
+		Given:       "$.components.schemas[*]",
+		Then: &types.RuleAction{
+			Field:    "title",
+			Function: "unique",
+		},
+	}
+	document := map[string]interface{}{
+		"components": map[string]interface{}{},
+	}
+
+	results, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:     rule,
+		Document: document,
+	})
+	if err != nil {
+		t.Fatalf("expected no-match unique rule to execute successfully, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected no results for no-match unique rule, got %+v", results)
+	}
+}
+
 func TestExecuteRuleUniqueRejectsNonCollectionSelection(t *testing.T) {
 	rule := &types.Rule{
 		Description: "Invalid unique target",

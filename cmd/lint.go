@@ -113,8 +113,10 @@ func RunLint(opts LintOptions) error {
 
 		if err != nil {
 			allResults = append(allResults, types.RuleFunctionResult{
-				RuleID:  ruleId,
-				Message: err.Error(),
+				RuleID:   ruleId,
+				Message:  err.Error(),
+				Severity: types.SeverityError,
+				Kind:     types.ResultKindRuleError,
 			})
 			errorCount++
 			continue
@@ -124,6 +126,12 @@ func RunLint(opts LintOptions) error {
 		for i := range results {
 			if results[i].RuleID == "" {
 				results[i].RuleID = ruleId
+			}
+			if results[i].Severity == "" {
+				results[i].Severity = normalizedSeverity
+			}
+			if results[i].Kind == "" {
+				results[i].Kind = types.ResultKindLint
 			}
 			if results[i].Message != "" {
 				ruleViolationCount++
