@@ -17,9 +17,14 @@ type lintScenario struct {
 	dir         string
 	openRPCFile string
 	rulesFile   string
+	docData     map[string]any
 	output      bytes.Buffer
 	err         error
 }
+
+// registerRecommendedSteps lets recommended_rules_test.go register additional
+// steps on the same scenario without duplicating the godog wiring.
+var registerRecommendedSteps func(*godog.ScenarioContext, *lintScenario)
 
 func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
@@ -43,6 +48,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 		s.dir = ""
 		s.openRPCFile = ""
 		s.rulesFile = ""
+		s.docData = nil
 		s.output.Reset()
 		s.err = nil
 		return ctx, nil
@@ -101,6 +107,9 @@ rules:
 	})
 
 	sc.Step(`^I run the linter$`, func() error {
+		if s.docData != nil {
+			return s.runWithDoc()
+		}
 		if s.openRPCFile == "" {
 			return fmt.Errorf("OpenRPC document was not created")
 		}
@@ -137,6 +146,10 @@ rules:
 		}
 		return fmt.Errorf("expected lint output to mention %q, got:\n%s", expected, s.output.String())
 	})
+
+	if registerRecommendedSteps != nil {
+		registerRecommendedSteps(sc, s)
+	}
 }
 
 func (s *lintScenario) writeOpenRPCDocument(content string) error {
