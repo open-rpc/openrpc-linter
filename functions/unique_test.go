@@ -63,6 +63,15 @@ func TestUniqueRule(t *testing.T) {
 			expected: []string{"Duplicate value for field 'summary': null"},
 		},
 		{
+			name:            "rejects non boolean ignoreMissing option",
+			field:           "summary",
+			functionOptions: map[string]interface{}{"ignoreMissing": "false"},
+			value: []interface{}{
+				map[string]interface{}{"name": "first"},
+			},
+			expected: []string{"unique function option ignoreMissing must be a boolean"},
+		},
+		{
 			name:     "requires then field",
 			value:    []interface{}{},
 			expected: []string{"unique function requires then.field"},

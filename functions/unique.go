@@ -32,10 +32,16 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 
 	ignoreMissing := true
 	if context.Rule.Then.FunctionOptions != nil {
-		if rawIgnoreMissing, exists := context.Rule.Then.FunctionOptions["ignoreMissing"]; exists {
-			if parsed, ok := rawIgnoreMissing.(bool); ok {
-				ignoreMissing = parsed
+		rawIgnoreMissing, exists := context.Rule.Then.FunctionOptions["ignoreMissing"]
+		if exists {
+			parsed, ok := rawIgnoreMissing.(bool)
+			if !ok {
+				return []types.RuleFunctionResult{{
+					Message: "unique function option ignoreMissing must be a boolean",
+					Path:    resultPath(context.Path),
+				}}
 			}
+			ignoreMissing = parsed
 		}
 	}
 
