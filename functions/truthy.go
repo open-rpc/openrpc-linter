@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/open-rpc/openrpc-linter/types"
-
-	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type TruthyRule struct{}
@@ -46,8 +44,4 @@ func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContex
 	}
 
 	return results
-}
-
-func (r *TruthyRule) GetSchema() *jsonschema.Schema {
-	return &jsonschema.Schema{}
 }

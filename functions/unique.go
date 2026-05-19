@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/open-rpc/openrpc-linter/types"
-
-	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type UniqueRule struct{}
@@ -143,10 +141,6 @@ func pathNameSegment(name string) string {
 	escaped := strings.ReplaceAll(name, `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
 	return "['" + escaped + "']"
-}
-
-func (r *UniqueRule) GetSchema() *jsonschema.Schema {
-	return &jsonschema.Schema{}
 }
 
 func comparableKey(value interface{}) (key string, displayValue string, supported bool) {
