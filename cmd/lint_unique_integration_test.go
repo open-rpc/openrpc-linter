@@ -15,7 +15,7 @@ func TestRunLintUniqueBadDocumentReportsEveryRule(t *testing.T) {
 	var output bytes.Buffer
 
 	opts := LintOptions{
-		OpenRPCFile: filepath.Join("testdata", "unique", "bad-document.json"),
+		OpenRPCFile: filepath.Join("..", "e2e", "fixtures", "unique", "bad-document.json"),
 		RulesFile:   filepath.Join("..", "rules.yml"),
 		Output:      &output,
 		Format:      "json",
