@@ -586,6 +586,57 @@ func TestExecuteRuleUniqueNoMatchesReturnsNoResults(t *testing.T) {
 	}
 }
 
+func TestExecuteRuleReferencedUsesGenericComponentGiven(t *testing.T) {
+	rule := &types.Rule{
+		Description: "Components should be referenced.",
+		Given:       "$.components.*[*]",
+		Severity:    types.SeverityWarn,
+		Then: &types.RuleAction{
+			Function: "referenced",
+		},
+	}
+	document := map[string]interface{}{
+		"methods": []interface{}{
+			map[string]interface{}{
+				"result": map[string]interface{}{
+					"schema": map[string]interface{}{"$ref": "#/components/schemas/Pet"},
+				},
+			},
+		},
+		"components": map[string]interface{}{
+			"schemas": map[string]interface{}{
+				"Pet": map[string]interface{}{"type": "object"},
+				"Unused": map[string]interface{}{
+					"$ref": "#/components/errors/SharedError",
+				},
+			},
+			"errors": map[string]interface{}{
+				"SharedError": map[string]interface{}{
+					"code":    -32000,
+					"message": "Shared error",
+				},
+			},
+		},
+	}
+
+	results, err := ExecuteRule(rule, types.RuleFunctionContext{
+		Rule:     rule,
+		Document: document,
+	})
+	if err != nil {
+		t.Fatalf("expected referenced rule to execute successfully, got: %v", err)
+	}
+
+	var messages []string
+	for _, result := range results {
+		messages = append(messages, result.Message)
+	}
+	expected := []string{`unused component "schemas.Unused"`}
+	if !reflect.DeepEqual(messages, expected) {
+		t.Fatalf("expected messages %+v, got %+v", expected, messages)
+	}
+}
+
 func TestGetFieldFromNode(t *testing.T) {
 	tests := []struct {
 		name     string

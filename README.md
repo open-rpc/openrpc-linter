@@ -97,6 +97,7 @@ The built-in functions currently include:
 
 - `truthy`: require a selected value to be present and non-empty
 - `unique`: require every selected value to be distinct across one rule run
+- `referenced`: require selected components to have an inbound internal `$ref`
 
 `unique` is symmetric with `truthy`: point `given` directly at the values you want to compare. By default duplicates are tracked in a single global bucket per rule run. Set `functionOptions.scope` to a JSONPath to partition duplicates by the longest-matching scope; targets outside every scope match are skipped (not deduped globally).
 
@@ -120,3 +121,15 @@ rules:
 ```
 
 `unique` also supports `then.functionOptions.ignoreMissing`, which defaults to `true` and only matters for `given` paths whose terminal segment is a field name (so the selector can emit missing-field targets).
+
+Use `referenced` with a `given` path that selects components directly. It scans the original document for internal refs and counts refs from both inside and outside `#/components`, so shared components used only by other components are allowed.
+
+```yaml
+rules:
+  unused-components:
+    description: "Components should be referenced."
+    given: "$.components.*[*]"
+    severity: "warn"
+    then:
+      function: "referenced"
+```

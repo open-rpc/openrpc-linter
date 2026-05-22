@@ -90,3 +90,9 @@ rules:
     severity: "error"
     then:
       function: "unique"
+  unused-components:
+    description: "Components should be referenced."
+    given: "$.components.*[*]"
+    severity: "warn"
+    then:
+      function: "referenced"
