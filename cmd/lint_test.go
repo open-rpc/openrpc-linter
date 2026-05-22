@@ -479,6 +479,86 @@ rules:
 	}
 }
 
+func TestRunLintRecommendedSchemaTypeChecksComponentsSchemas(t *testing.T) {
+	openrpcContent := `{
+        "openrpc": "1.4.0",
+        "info": {
+          "title": "Demo",
+          "version": "1.0.0",
+          "description": "Demo API.",
+          "license": {"name": "MIT"}
+        },
+        "methods": [
+          {
+            "name": "foo",
+            "summary": "Foo",
+            "description": "Foo method.",
+            "params": [
+              {
+                "name": "id",
+                "summary": "ID",
+                "description": "ID param.",
+                "schema": {
+                  "type": "string",
+                  "title": "ID",
+                  "description": "ID schema."
+                }
+              }
+            ],
+            "result": {
+              "name": "ok",
+              "description": "OK result.",
+              "schema": {
+                "type": "boolean",
+                "title": "OK",
+                "description": "OK schema."
+              }
+            },
+            "errors": [
+              {"code": 100, "message": "boom", "description": "Failure."}
+            ],
+            "examples": [
+              {
+                "name": "foo example",
+                "description": "Example.",
+                "params": [{"name": "id", "value": "abc"}],
+                "result": {"name": "ok", "value": true}
+              }
+            ]
+          }
+        ],
+        "components": {
+          "schemas": {
+            "Pet": {
+              "title": "Pet",
+              "description": "A pet schema."
+            }
+          }
+        }
+      }`
+
+	rulesContent := `extends:
+  - recommended
+`
+
+	results, err := runLintJSON(t, openrpcContent, rulesContent)
+	if err != nil {
+		t.Fatalf("schema-type is warn-only and should not fail lint, got: %v\nresults: %+v", err, results)
+	}
+
+	for _, r := range results {
+		if r.RuleID != "schema-type" {
+			continue
+		}
+		for _, p := range r.Path {
+			if p == "$['components']['schemas']['Pet']" {
+				return
+			}
+		}
+	}
+	t.Fatalf("expected schema-type warning for components schema missing type, got: %+v", results)
+}
+
 func TestRunLintInvalidSeverityFailsFast(t *testing.T) {
 	openrpcContent := map[string]interface{}{
 		"info": map[string]interface{}{
