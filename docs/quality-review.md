@@ -16,7 +16,7 @@ The active rerun uses installed Cyclo `5890ecc9abedde8fd3e95aa87c3d28ef90c6fd91`
 | Pattern candidates | 73 | 74 |
 | Typed-nil candidates | 0 | 0 |
 
-Current Cyclo raises the default function-length limit from 50 to 200. The default finding counts therefore cannot be compared directly with the initial 72/70 counts below. A second scan with `[fn_length] max = 50` reports **70 findings on this PR**, matching the initial policy. No source-code improvement is attributed to this threshold change.
+The review uses the current **200-line function-length limit**. The active production scan reports **67 findings** and no function-length findings. The earlier 72/70 counts below are historical results from the initial tool; they are not the current policy.
 
 The 74 current pattern candidates are 39 `thin_slice`, 19 `chop`, 8 `barrier_slice`, 3 `ccgraph_clone`, 2 `forcetypeassert`, and one each of `value_object`, `primitive_obsession`, and `parameterize`. The 66 slicing candidates are new dependency-analysis signals; they are not 66 confirmed bugs. The remaining eight candidates retain the review decisions below. The dry-run fixer reports zero automatic edits; an apply run also leaves the tree unchanged. The current score is 0/100 with 74 active candidates; no warning is suppressed to change that score.
 
