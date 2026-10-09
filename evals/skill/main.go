@@ -147,6 +147,13 @@ func check(root, workspace string) error {
 	if err != nil {
 		return err
 	}
+	if err := checkDocumentChange(original, updated); err != nil {
+		return err
+	}
+	return checkRules(fixtures, workspace)
+}
+
+func checkDocumentChange(original, updated map[string]any) error {
 	methods, _ := updated["methods"].([]any)
 	if len(methods) != 1 {
 		return fmt.Errorf("FAIL: expected the original ping method")
@@ -160,7 +167,7 @@ func check(root, workspace string) error {
 	if !reflect.DeepEqual(original, updated) {
 		return fmt.Errorf("FAIL: unrelated document changes")
 	}
-	return checkRules(fixtures, workspace)
+	return nil
 }
 
 func checkRules(fixtures, workspace string) error {
