@@ -1,8 +1,41 @@
 # Cyclo quality review — 2026-10-09
 
 Baseline: `f8d4549` (latest `main` when this review starts).
-Tool: installed local Cyclo, revision `7421c3d1f15dc8e65d9f0453d7b206a470ec68ef`, built 2026-10-09.
+Initial tool: installed local Cyclo, revision `7421c3d1f15dc8e65d9f0453d7b206a470ec68ef`, built 2026-10-09.
 The installed binary is newer than the local source checkout. This review uses the installed binary and its `--skill` instructions.
+
+## Rerun after the Cyclo typed-nil fix
+
+The active rerun uses installed Cyclo `5890ecc9abedde8fd3e95aa87c3d28ef90c6fd91` (GitHub PR #34 merged). The binary is built from clean GitHub master. Both current linter main (`f8d4549`) and this PR (`841648e`, before this report update) are scanned with the same tool. Main has no newer commits.
+
+**All 13 typed-nil false alarms are gone on both main and this PR.** The valid nil checks remain unchanged. Full results:
+
+| Scan | Current main | This PR |
+| --- | ---: | ---: |
+| Production quality findings, current defaults | 67 | 67 |
+| Pattern candidates | 73 | 74 |
+| Typed-nil candidates | 0 | 0 |
+
+Current Cyclo raises the default function-length limit from 50 to 200. The default finding counts therefore cannot be compared directly with the initial 72/70 counts below. A second scan with `[fn_length] max = 50` reports **70 findings on this PR**, matching the initial policy. No source-code improvement is attributed to this threshold change.
+
+The 74 current pattern candidates are 39 `thin_slice`, 19 `chop`, 8 `barrier_slice`, 3 `ccgraph_clone`, 2 `forcetypeassert`, and one each of `value_object`, `primitive_obsession`, and `parameterize`. The 66 slicing candidates are new dependency-analysis signals; they are not 66 confirmed bugs. The remaining eight candidates retain the review decisions below. The dry-run fixer reports zero automatic edits; an apply run also leaves the tree unchanged. The current score is 0/100 with 74 active candidates; no warning is suppressed to change that score.
+
+The scan including tests reports 159 quality findings. The changed-function scan against `f8d4549` reports 11: seven effect-density findings, two mutated-target findings, one mutation-per-target finding, and one parameter-count finding. Its Git diff uses standard prefixes because this host's mnemonic diff prefixes otherwise hide changed functions. IO density stays visible at the explicit load/output boundaries; selector state and reporter accumulation still require design judgment.
+
+The highest-ranked `next` candidate is a `chop` in `evals/skill/main.go:140` (`check`). Its work intentionally verifies the edited document and then the rules. Other candidates point at uniqueness state, recursive reference resolution, path labels, and selector dependencies. This rerun makes no further implementation changes; it records the evidence for a separate design review.
+
+Build, all Go race tests, pinned lint, and all eight npm smoke tests under both Bun and Node pass again. CC/COG remains 7/6 for `RunLint` and 8/9 for `TextReporter.Format`.
+
+Additional rerun commands:
+
+```sh
+cyclo check --tests --format json .
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.mnemonicPrefix GIT_CONFIG_VALUE_0=false cyclo check --changed --base f8d4549 --format json .
+cyclo score .
+cyclo next .
+```
+
+The earlier sections record the initial tool's results and review decisions.
 
 ## Changes
 
