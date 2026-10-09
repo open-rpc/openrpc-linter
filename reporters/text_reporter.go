@@ -54,14 +54,41 @@ type bucket struct {
 	methodIx int // smallest methods[N] index across the rows (groupKindMethod only)
 }
 
+type pending struct {
+	row       row
+	methodIdx int
+}
+
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
-	colorEnabled := supportsColor(output)
-
-	type pending struct {
-		row       row
-		methodIdx int
+	pendings, summary := collectRows(results)
+	if len(pendings) == 0 {
+		_, err := fmt.Fprintf(output, "All %d rules passed\n", totalRules)
+		return err
 	}
+	groups := groupRows(pendings)
+	pathW := pathColumnWidth(pendings)
+	colorEnabled := supportsColor(output)
+	if r.SourceFile != "" {
+		if _, err := fmt.Fprintf(output, "%s\n\n", r.SourceFile); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(output, "%s\n\n", summary); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(output, formatColumnHeaderRow(pathW)); err != nil {
+		return err
+	}
+	for _, group := range groups {
+		if err := group.write(output, pathW, colorEnabled); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(output, "\n%s\n", summary)
+	return err
+}
 
+func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 	pendings := make([]pending, 0, len(results))
 	errorCount, warnCount, infoCount := 0, 0, 0
 	ruleViolations := make(map[string]struct{})
@@ -101,24 +128,21 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 		})
 	}
 
-	if len(pendings) == 0 {
-		if _, err := fmt.Fprintf(output, "All %d rules passed\n", totalRules); err != nil {
-			return err
-		}
-		return nil
-	}
+	return pendings, formatViolationSummary(errorCount, warnCount, infoCount, len(ruleViolations))
+}
 
+func groupRows(pendings []pending) []*bucket {
 	// Bucket rows by (kind, name), tracking the smallest method index per
 	// bucket so method groups can be ordered by document position.
 	buckets := make(map[string]*bucket)
-	keys := make([]string, 0)
+	groups := make([]*bucket, 0)
 	for _, p := range pendings {
 		key := p.row.groupKind + "\x00" + p.row.groupName
 		b, ok := buckets[key]
 		if !ok {
 			b = &bucket{kind: p.row.groupKind, name: p.row.groupName, methodIx: -1}
 			buckets[key] = b
-			keys = append(keys, key)
+			groups = append(groups, b)
 		}
 		b.rows = append(b.rows, p.row)
 		if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
@@ -126,31 +150,9 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 		}
 	}
 
-	// Sort group keys by (kind rank, secondary key).
-	sort.SliceStable(keys, func(i, j int) bool {
-		bi, bj := buckets[keys[i]], buckets[keys[j]]
-		ri, rj := groupOrder[bi.kind], groupOrder[bj.kind]
-		if ri != rj {
-			return ri < rj
-		}
-		if bi.kind == groupKindMethod {
-			// Both -1 fall through to name; otherwise smaller doc index first.
-			if bi.methodIx != bj.methodIx {
-				if bi.methodIx < 0 {
-					return false
-				}
-				if bj.methodIx < 0 {
-					return true
-				}
-				return bi.methodIx < bj.methodIx
-			}
-		}
-		return bi.name < bj.name
-	})
-
-	// Stable within-group sort: path → ruleID → message.
-	for _, k := range keys {
-		rows := buckets[k].rows
+	sort.SliceStable(groups, func(i, j int) bool { return groups[i].less(groups[j]) })
+	for _, group := range groups {
+		rows := group.rows
 		sort.SliceStable(rows, func(i, j int) bool {
 			if rows[i].path != rows[j].path {
 				return rows[i].path < rows[j].path
@@ -161,7 +163,26 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 			return rows[i].message < rows[j].message
 		})
 	}
+	return groups
+}
 
+func (b *bucket) less(other *bucket) bool {
+	if rank, otherRank := groupOrder[b.kind], groupOrder[other.kind]; rank != otherRank {
+		return rank < otherRank
+	}
+	if b.kind != groupKindMethod || b.methodIx == other.methodIx {
+		return b.name < other.name
+	}
+	if b.methodIx < 0 {
+		return false
+	}
+	if other.methodIx < 0 {
+		return true
+	}
+	return b.methodIx < other.methodIx
+}
+
+func pathColumnWidth(pendings []pending) int {
 	// Compute path column width across ALL rows so every group lines up.
 	allPaths := make([]string, 0, len(pendings))
 	for _, p := range pendings {
@@ -174,46 +195,27 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 		pathW = len("path")
 	}
 
-	summary := formatViolationSummary(errorCount, warnCount, infoCount, len(ruleViolations))
+	return pathW
+}
 
-	if r.SourceFile != "" {
-		if _, err := fmt.Fprintf(output, "%s\n\n", r.SourceFile); err != nil {
-			return err
-		}
-	}
-
-	if _, err := fmt.Fprintf(output, "%s\n\n", summary); err != nil {
+func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
+	if _, err := fmt.Fprintf(output, "\n%s\n", formatGroupHeader(b.kind, b.name)); err != nil {
 		return err
 	}
-
-	if _, err := io.WriteString(output, formatColumnHeaderRow(pathW)); err != nil {
-		return err
-	}
-
-	for _, k := range keys {
-		b := buckets[k]
-		if _, err := fmt.Fprintf(output, "\n%s\n", formatGroupHeader(b.kind, b.name)); err != nil {
+	for _, row := range b.rows {
+		pathCell := styledCell(row.path, pathW, ansiDarkGrey, colorEnabled)
+		sevCell := formatSeverityCol(row.severity, colorEnabled)
+		msgCell := styledCell(row.message, colMessage, ansiLightGrey, colorEnabled)
+		ruleCell := colorize(row.ruleID, ansiDarkGrey, colorEnabled)
+		if _, err := io.WriteString(output, formatViolationLine(pathCell, sevCell, msgCell, ruleCell)); err != nil {
 			return err
 		}
-		for _, row := range b.rows {
-			pathCell := styledCell(row.path, pathW, ansiDarkGrey, colorEnabled)
-			sevCell := formatSeverityCol(row.severity, colorEnabled)
-			msgCell := styledCell(row.message, colMessage, ansiLightGrey, colorEnabled)
-			ruleCell := colorize(row.ruleID, ansiDarkGrey, colorEnabled)
-			if _, err := io.WriteString(output, formatViolationLine(pathCell, sevCell, msgCell, ruleCell)); err != nil {
+		for _, sec := range formatSecondaryLabels(row.pathLabels, row.groupKind) {
+			styled := colorize(truncate(sec, colMessage), ansiDarkGrey, colorEnabled)
+			if _, err := fmt.Fprintf(output, "    %s\n", styled); err != nil {
 				return err
 			}
-			for _, sec := range formatSecondaryLabels(row.pathLabels, row.groupKind) {
-				styled := colorize(truncate(sec, colMessage), ansiDarkGrey, colorEnabled)
-				if _, err := fmt.Fprintf(output, "    %s\n", styled); err != nil {
-					return err
-				}
-			}
 		}
-	}
-
-	if _, err := fmt.Fprintf(output, "\n%s\n", summary); err != nil {
-		return err
 	}
 	return nil
 }

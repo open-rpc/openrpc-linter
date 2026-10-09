@@ -84,6 +84,7 @@ func selectSegments(
 		if field, ok := terminalName(descSeg); ok && idx != nil {
 			return descendantFieldTargets(prefix, field, current, idx)
 		}
+		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
 	}
 
 	// 2b) Compound descendant: $.scope..f.rest. Do the descendant step

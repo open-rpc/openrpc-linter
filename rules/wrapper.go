@@ -24,18 +24,12 @@ func (rw *RulesWrapper) CheckRules() error {
 }
 
 func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
-
-	if rw.Rules == nil {
-		rw.Rules = make(map[string]types.Rule)
-	}
-
 	merged, err := getExtendedRules(rw.Extends)
 	if err != nil {
 		return nil, err
 	}
 
-	merged = mergeRules(merged, rw.Rules)
-	return merged, nil
+	return mergeRules(merged, rw.Rules), nil
 }
 
 func mergeRule(base types.Rule, override types.Rule) types.Rule {
