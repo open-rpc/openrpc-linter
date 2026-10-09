@@ -11,31 +11,22 @@ type TruthyRule struct{}
 // truthy only has to answer "is this present and truthy?" and emit the
 // right diagnostic. No JSONPath introspection lives here anymore.
 func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
+	path := context.Path
 	t := context.Target
-	if t == nil {
-		// Direct invocation without a target (used by some tests). Fall
-		// back to "is the supplied value truthy?" — the old behavior for
-		// the no-context case.
-		if !truthyValue(value) {
+	if t != nil {
+		path = t.PathString()
+		if t.Field != "" && !t.Exists {
 			return []types.RuleFunctionResult{{
-				Message: "Field must have a truthy value",
-				Path:    resultPath(context.Path),
+				Message: "missing field '" + t.Field + "'",
+				Path:    resultPath(path),
 			}}
 		}
-		return nil
-	}
-
-	if t.Field != "" && !t.Exists {
-		return []types.RuleFunctionResult{{
-			Message: "missing field '" + t.Field + "'",
-			Path:    resultPath(t.PathString()),
-		}}
 	}
 
 	if !truthyValue(value) {
 		return []types.RuleFunctionResult{{
 			Message: "Field must have a truthy value",
-			Path:    resultPath(t.PathString()),
+			Path:    resultPath(path),
 		}}
 	}
 
