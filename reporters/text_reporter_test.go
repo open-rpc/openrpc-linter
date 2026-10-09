@@ -2,6 +2,8 @@ package reporters
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -526,5 +528,49 @@ func TestTextReporterOmitsSourceFileHeaderWhenNoViolations(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "openrpc.json") {
 		t.Fatalf("expected no source file header on clean runs, got:\n%s", output.String())
+	}
+}
+
+// writeProbe fails at a chosen write so every output boundary is exercised.
+type writeProbe struct {
+	calls  int
+	failAt int
+	err    error
+}
+
+func (w *writeProbe) Write(p []byte) (int, error) {
+	w.calls++
+	if w.calls == w.failAt {
+		return 0, w.err
+	}
+	return len(p), nil
+}
+
+func TestTextReporterReturnsWriteErrors(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("FORCE_COLOR", "")
+	reporter := TextReporter{SourceFile: "openrpc.json"}
+	cases := [][]types.RuleFunctionResult{
+		nil,
+		{{Message: "missing description", RuleID: "description", Path: []string{"$['methods'][0]['params'][0]['description']"},
+			PathLabels: types.PathLabels{Method: "ping", Param: "id"}}},
+	}
+	for caseIndex, results := range cases {
+		probe := &writeProbe{}
+		if err := reporter.Format(results, 1, probe); err != nil {
+			t.Fatal(err)
+		}
+		for failAt := 1; failAt <= probe.calls; failAt++ {
+			t.Run(fmt.Sprintf("case=%d/write=%d", caseIndex, failAt), func(t *testing.T) {
+				want := errors.New("write failed")
+				writer := &writeProbe{failAt: failAt, err: want}
+				if err := reporter.Format(results, 1, writer); !errors.Is(err, want) {
+					t.Fatalf("got %v, want %v", err, want)
+				}
+				if writer.calls != failAt {
+					t.Fatalf("writes continue after error: got %d, want %d", writer.calls, failAt)
+				}
+			})
+		}
 	}
 }

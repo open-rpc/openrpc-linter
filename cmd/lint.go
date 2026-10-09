@@ -60,119 +60,119 @@ func normalizeSeverity(severity types.Severity) (types.Severity, error) {
 }
 
 func RunLint(opts LintOptions) error {
-	openrpcData, err := os.ReadFile(opts.OpenRPCFile)
-	if err != nil {
-		fmt.Fprintf(opts.Output, "Error reading OpenRPC file: %v\n", err)
-		return err
-	}
-
-	var openrpcDoc interface{}
-	err = json.Unmarshal(openrpcData, &openrpcDoc)
-	if err != nil {
-		fmt.Fprintf(opts.Output, "Error parsing OpenRPC file: %v\n", err)
-		return err
-	}
-
-	// Resolve all $ref references in the document
-	resolvedDoc, err := resolveRefs(openrpcDoc)
-	if err != nil {
-		fmt.Fprintf(opts.Output, "Error resolving $refs in OpenRPC file: %v\n", err)
-		return err
-	}
-
-	// Build the schema-aware index once per lint run. The selector and
-	// every rule function consume Targets derived from this index;
-	// rebuilding per-rule would be wasteful and would lose the cache.
-	meta, err := metaschema.For(openrpcDoc)
-	if err != nil {
-		fmt.Fprintf(opts.Output, "Error selecting OpenRPC meta-schema: %v\n", err)
-		return err
-	}
-	index := selector.Build(resolvedDoc, meta)
-
-	rulesWrapper, err := rules.LoadRulesFileFromPath(opts.RulesFile)
+	context, err := loadLintDocument(opts.OpenRPCFile, opts.Output)
 	if err != nil {
 		return err
 	}
-
-	err = rulesWrapper.CheckRules()
-	if err != nil {
-		fmt.Fprintf(opts.Output, "Error checking rules file: %v\n", err)
-		return err
-	}
-	rulesWrapper.Rules, err = rulesWrapper.ResolvedRules()
-
+	ruleSet, err := loadLintRules(opts.RulesFile, opts.Output)
 	if err != nil {
 		return err
 	}
-
-	var allResults []types.RuleFunctionResult
-	totalRules := len(rulesWrapper.Rules)
-	errorCount := 0
-
-	for ruleId, rule := range rulesWrapper.Rules {
-		normalizedSeverity, err := normalizeSeverity(rule.Severity)
-		if err != nil {
-			fmt.Fprintf(opts.Output, "Error validating rules file: rule %q %v\n", ruleId, err)
-			return err
-		}
-		if normalizedSeverity == types.SeverityIgnore {
-			continue
-		}
-		rule.Severity = normalizedSeverity
-
-		context := types.RuleFunctionContext{
-			Rule:             &rule,
-			RuleID:           ruleId,
-			Document:         openrpcDoc,
-			ResolvedDocument: resolvedDoc,
-			Index:            index,
-		}
-		results, err := rules.ExecuteRule(&rule, context)
-
-		if err != nil {
-			allResults = append(allResults, types.RuleFunctionResult{
-				RuleID:   ruleId,
-				Message:  err.Error(),
-				Severity: types.SeverityError,
-			})
-			errorCount++
-			continue
-		}
-
-		ruleViolationCount := 0
-		for i := range results {
-			if results[i].RuleID == "" {
-				results[i].RuleID = ruleId
-			}
-			if results[i].Message != "" {
-				results[i].Severity = normalizedSeverity
-				ruleViolationCount++
-			}
-		}
-
-		if normalizedSeverity == types.SeverityError {
-			errorCount += ruleViolationCount
-		}
-
-		allResults = append(allResults, results...)
+	results, errorCount, err := evaluateLintRules(ruleSet, context, opts.Output)
+	if err != nil {
+		return err
 	}
-
-	location.Enrich(allResults, resolvedDoc)
+	location.Enrich(results, context.ResolvedDocument)
 
 	reporter := GetReporter(opts.Format)
 	if tr, ok := reporter.(*reporters.TextReporter); ok {
 		tr.SourceFile = opts.OpenRPCFile
 	}
-	if err := reporter.Format(allResults, totalRules, opts.Output); err != nil {
+	if err := reporter.Format(results, len(ruleSet), opts.Output); err != nil {
 		return err
 	}
-
 	if errorCount > 0 {
 		return fmt.Errorf("found %d linting error(s)", errorCount)
 	}
-
 	return nil
+}
+
+// loadLintDocument prepares the shared document and index once per lint run.
+func loadLintDocument(path string, output io.Writer) (types.RuleFunctionContext, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(output, "Error reading OpenRPC file: %v\n", err)
+		return types.RuleFunctionContext{}, err
+	}
+	var document interface{}
+	if err := json.Unmarshal(data, &document); err != nil {
+		fmt.Fprintf(output, "Error parsing OpenRPC file: %v\n", err)
+		return types.RuleFunctionContext{}, err
+	}
+	resolved, err := resolveRefs(document)
+	if err != nil {
+		fmt.Fprintf(output, "Error resolving $refs in OpenRPC file: %v\n", err)
+		return types.RuleFunctionContext{}, err
+	}
+	meta, err := metaschema.For(document)
+	if err != nil {
+		fmt.Fprintf(output, "Error selecting OpenRPC meta-schema: %v\n", err)
+		return types.RuleFunctionContext{}, err
+	}
+	return types.RuleFunctionContext{
+		Document:         document,
+		ResolvedDocument: resolved,
+		Index:            selector.Build(resolved, meta),
+	}, nil
+}
+
+func loadLintRules(path string, output io.Writer) (map[string]types.Rule, error) {
+	wrapper, err := rules.LoadRulesFileFromPath(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := wrapper.CheckRules(); err != nil {
+		fmt.Fprintf(output, "Error checking rules file: %v\n", err)
+		return nil, err
+	}
+	return wrapper.ResolvedRules()
+}
+
+func evaluateLintRules(ruleSet map[string]types.Rule, context types.RuleFunctionContext, output io.Writer) ([]types.RuleFunctionResult, int, error) {
+	var allResults []types.RuleFunctionResult
+	errorCount := 0
+	for ruleID, rule := range ruleSet {
+		severity, err := normalizeSeverity(rule.Severity)
+		if err != nil {
+			fmt.Fprintf(output, "Error validating rules file: rule %q %v\n", ruleID, err)
+			return nil, 0, err
+		}
+		if severity == types.SeverityIgnore {
+			continue
+		}
+		rule.Severity = severity
+		results, count := evaluateLintRule(ruleID, rule, context)
+		allResults = append(allResults, results...)
+		errorCount += count
+	}
+	return allResults, errorCount, nil
+}
+
+func evaluateLintRule(ruleID string, rule types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, int) {
+	context.Rule = &rule
+	context.RuleID = ruleID
+	results, err := rules.ExecuteRule(&rule, context)
+	if err != nil {
+		return []types.RuleFunctionResult{{
+			RuleID:   ruleID,
+			Message:  err.Error(),
+			Severity: types.SeverityError,
+		}}, 1
+	}
+	errorCount := 0
+	for i := range results {
+		if results[i].RuleID == "" {
+			results[i].RuleID = ruleID
+		}
+		if results[i].Message == "" {
+			continue
+		}
+		results[i].Severity = rule.Severity
+		if rule.Severity == types.SeverityError {
+			errorCount++
+		}
+	}
+	return results, errorCount
 }
 
 var lintCmd = &cobra.Command{

@@ -54,6 +54,9 @@ func TestRulesYAMLEmptyRulesWithExtends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvedRules: %v", err)
 	}
+	if rw.Rules != nil {
+		t.Fatalf("ResolvedRules changes the source rules: %#v", rw.Rules)
+	}
 	for _, name := range []string{"info-description", "method-description", "method-errors", "method-examples"} {
 		if _, ok := merged[name]; !ok {
 			t.Errorf("expected inherited rule %q from recommended extension", name)

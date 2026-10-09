@@ -1,6 +1,8 @@
 package selector
 
 import (
+	"fmt"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -218,4 +220,56 @@ func equalSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// Descendant queries outside the schema-aware name case must use JSONPath
+// directly. Re-entering the same segments never makes recursion progress.
+func TestSelectDescendantValueFallback(t *testing.T) {
+	doc := docFromJSON(t, `{"methods":[{"name":"ping","params":[{"name":"id"}]}]}`)
+	for _, query := range []string{"$..name", "$..*", "$..['name','params']", "$..[0]", "$..[?@.name]"} {
+		for _, withIndex := range []bool{false, true} {
+			// A single name with an index deliberately uses field mode.
+			if query == "$..name" && withIndex {
+				continue
+			}
+			t.Run(query+"/index="+fmt.Sprint(withIndex), func(t *testing.T) {
+				var idx *Index
+				if withIndex {
+					idx = Build(doc, metaV14(t))
+				}
+				path := pathParse(t, query)
+				want := path.SelectLocated(doc)
+				got := Select(path, doc, idx)
+				if len(got) != len(want) {
+					t.Fatalf("got %d targets, want %d", len(got), len(want))
+				}
+				wantByPath := make(map[string]any, len(want))
+				for _, node := range want {
+					wantByPath[node.Path.String()] = node.Node
+				}
+				for _, target := range got {
+					node, exists := wantByPath[target.PathString()]
+					if !exists || target.Field != "" || !target.Exists || !reflect.DeepEqual(target.Node, node) {
+						t.Fatalf("unexpected target: %+v", target)
+					}
+					delete(wantByPath, target.PathString())
+				}
+			})
+		}
+	}
+}
+
+func TestSelectCompoundDescendantWithoutIndex(t *testing.T) {
+	doc := docFromJSON(t, `{"methods":[{"result":{"name":"answer"}}]}`)
+	for _, query := range []string{"$.methods..result.name", "$..*.name"} {
+		t.Run(query, func(t *testing.T) {
+			got := Select(pathParse(t, query), doc, nil)
+			for _, target := range got {
+				if target.PathString() == "$['methods'][0]['result']['name']" && target.Exists && target.Node == "answer" {
+					return
+				}
+			}
+			t.Fatalf("missing compound descendant value: %+v", got)
+		})
+	}
 }
