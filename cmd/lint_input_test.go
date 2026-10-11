@@ -13,15 +13,6 @@ import (
 	"testing"
 )
 
-func writeLintFixture(t *testing.T, name, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 func TestLintInputFailures(t *testing.T) {
 	for _, tc := range []struct{ name, content, message string }{
 		{"malformed", "{", "Error parsing"}, {"unsupported", `{"openrpc":"9.0.0"}`, "Error selecting"},

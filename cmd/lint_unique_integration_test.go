@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -335,41 +334,18 @@ rules:
 func runLintJSON(t *testing.T, openrpcContent string, rulesContent string) ([]types.RuleFunctionResult, error) {
 	t.Helper()
 
-	tempOpenRPC, err := os.CreateTemp("", "unique-openrpc-*.json")
-	if err != nil {
-		t.Fatalf("failed to create temp OpenRPC file: %v", err)
-	}
-	defer os.Remove(tempOpenRPC.Name())
-
-	if _, err := tempOpenRPC.WriteString(openrpcContent); err != nil {
-		t.Fatalf("failed to write temp OpenRPC file: %v", err)
-	}
-	if err := tempOpenRPC.Close(); err != nil {
-		t.Fatalf("failed to close temp OpenRPC file: %v", err)
-	}
-
-	tempRules, err := os.CreateTemp("", "unique-rules-*.yml")
-	if err != nil {
-		t.Fatalf("failed to create temp rules file: %v", err)
-	}
-	defer os.Remove(tempRules.Name())
-
-	if _, err := tempRules.WriteString(rulesContent); err != nil {
-		t.Fatalf("failed to write temp rules file: %v", err)
-	}
-	if err := tempRules.Close(); err != nil {
-		t.Fatalf("failed to close temp rules file: %v", err)
-	}
+	openrpcFile := writeLintFixture(t, "openrpc.json", openrpcContent)
+	rulesFile := writeLintFixture(t, "rules.yml", rulesContent)
 
 	var output bytes.Buffer
 	opts := LintOptions{
-		OpenRPCFile: tempOpenRPC.Name(),
-		RulesFile:   tempRules.Name(),
+		OpenRPCFile: openrpcFile,
+		RulesFile:   rulesFile,
 		Output:      &output,
 		Format:      "json",
 	}
 
-	err = RunLint(opts)
+	err := RunLint(opts)
 
 	var results []types.RuleFunctionResult
 	if decodeErr := json.Unmarshal(output.Bytes(), &results); decodeErr != nil {
