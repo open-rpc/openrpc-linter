@@ -115,18 +115,21 @@ func formatGroupHeader(kind, name string) string {
 // grouped by method "foo" whose schema title is "Bar" yields ["schema: \"Bar\""].
 // Param is always shown when present (since the group is never "param").
 func formatSecondaryLabels(labels types.PathLabels, groupKind string) []string {
+	anchors := []struct {
+		kind  string
+		value string
+	}{
+		{"param", labels.Param},
+		{groupKindDescriptor, labels.Descriptor},
+		{groupKindSchema, labels.Schema},
+		{groupKindTag, labels.Tag},
+	}
 	var out []string
-	if labels.Param != "" {
-		out = append(out, fmt.Sprintf("param: %q", labels.Param))
-	}
-	if labels.Descriptor != "" && groupKind != groupKindDescriptor {
-		out = append(out, fmt.Sprintf("descriptor: %q", labels.Descriptor))
-	}
-	if labels.Schema != "" && groupKind != groupKindSchema {
-		out = append(out, fmt.Sprintf("schema: %q", labels.Schema))
-	}
-	if labels.Tag != "" && groupKind != groupKindTag {
-		out = append(out, fmt.Sprintf("tag: %q", labels.Tag))
+	for _, anchor := range anchors {
+		if anchor.value == "" || (anchor.kind != "param" && anchor.kind == groupKind) {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s: %q", anchor.kind, anchor.value))
 	}
 	return out
 }

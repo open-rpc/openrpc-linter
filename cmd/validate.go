@@ -50,13 +50,12 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Error compiling schema: %w", err)
 	}
 
-	err = schema.Validate(data)
-	if err != nil {
+	if err := schema.Validate(data); err != nil {
 		return fmt.Errorf("❌ Validation failed: %w", err)
 	}
 
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), "✅ OpenRPC document is valid!")
-	return err
+	_, writeErr := fmt.Fprintln(cmd.OutOrStdout(), "✅ OpenRPC document is valid!")
+	return writeErr
 }
 
 func init() {

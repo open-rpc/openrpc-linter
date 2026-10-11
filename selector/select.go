@@ -26,16 +26,15 @@ func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 		return nil
 	}
 	segments := p.Query().Segments()
-	return selectSegments(segments, doc, doc, spec.NormalizedPath{}, idx)
+	return selectSegments(segments, doc, spec.NormalizedPath{}, idx)
 }
 
-// selectSegments evaluates segments against current rooted at root.
+// selectSegments evaluates segments against current.
 // basePath is the canonical path of current within root (empty for the
 // initial call). idx is the precomputed schema-aware Index.
 func selectSegments(
 	segments []*spec.Segment,
 	current any,
-	root any,
 	basePath spec.NormalizedPath,
 	idx *Index,
 ) []Target {
@@ -92,7 +91,7 @@ func selectSegments(
 	//     then re-run Select with the remaining segments rooted at each
 	//     intermediate node. This is the recursive case
 	midSegments := append(append([]*spec.Segment{}, prefix...), descSeg)
-	midTargets := selectSegments(midSegments, current, root, spec.NormalizedPath{}, idx)
+	midTargets := selectSegments(midSegments, current, spec.NormalizedPath{}, idx)
 
 	out := make([]Target, 0, len(midTargets))
 	for _, mid := range midTargets {
@@ -105,7 +104,7 @@ func selectSegments(
 		}
 		// Evaluate the suffix as a standalone query rooted at mid.Node.
 		// We rebase by prepending mid.Path to each emitted target's path.
-		subTargets := selectSegments(suffix, mid.Node, mid.Node, mid.Path, idx)
+		subTargets := selectSegments(suffix, mid.Node, mid.Path, idx)
 		for _, t := range subTargets {
 			out = append(out, rebase(t, mid.Path))
 		}

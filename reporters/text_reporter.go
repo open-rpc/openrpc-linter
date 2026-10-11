@@ -221,15 +221,19 @@ func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
 }
 
 func formatViolationSummary(errorCount, warnCount, infoCount, rulesWithViolations int) string {
+	counts := []struct {
+		count int
+		label string
+	}{
+		{errorCount, plural(errorCount, "error", "errors")},
+		{warnCount, plural(warnCount, "warning", "warnings")},
+		{infoCount, "info"},
+	}
 	var parts []string
-	if errorCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s", errorCount, plural(errorCount, "error", "errors")))
-	}
-	if warnCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s", warnCount, plural(warnCount, "warning", "warnings")))
-	}
-	if infoCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d info", infoCount))
+	for _, severity := range counts {
+		if severity.count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", severity.count, severity.label))
+		}
 	}
 
 	ruleLabel := "rules"
