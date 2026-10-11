@@ -28,26 +28,26 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Error reading %s: %w", filename, err)
 	}
 
-	data, err := jsonschema.UnmarshalJSON(strings.NewReader(string(openrpc)))
-	if err != nil {
-		return fmt.Errorf("Error parsing JSON: %w", err)
+	data, parseErr := jsonschema.UnmarshalJSON(strings.NewReader(string(openrpc)))
+	if parseErr != nil {
+		return fmt.Errorf("Error parsing JSON: %w", parseErr)
 	}
 
-	meta, err := metaschema.For(data)
-	if err != nil {
-		return err
+	meta, metaErr := metaschema.For(data)
+	if metaErr != nil {
+		return metaErr
 	}
 
-	version, err := metaschema.Version(data)
-	if err != nil {
-		return fmt.Errorf("Error getting OpenRPC version: %w", err)
+	version, versionErr := metaschema.Version(data)
+	if versionErr != nil {
+		return fmt.Errorf("Error getting OpenRPC version: %w", versionErr)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Validating OpenRPC document: %s (OpenRPC %s)\n", filename, version)
 
-	schema, err := meta.Compile()
-	if err != nil {
-		return fmt.Errorf("Error compiling schema: %w", err)
+	schema, compileErr := meta.Compile()
+	if compileErr != nil {
+		return fmt.Errorf("Error compiling schema: %w", compileErr)
 	}
 
 	if err := schema.Validate(data); err != nil {

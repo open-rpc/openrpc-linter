@@ -240,25 +240,8 @@ func resolveRefsJSON(docBytes []byte, document interface{}) (interface{}, error)
 func resolveRefsRecursive(current interface{}, root interface{}, resolving types.ResolvingRefs) interface{} {
 	switch v := current.(type) {
 	case map[string]interface{}:
-		// Check if this is a $ref
-		if ref, exists := v["$ref"]; exists {
-			if refStr, ok := ref.(string); ok {
-				// Handle internal refs (starting with #)
-				if strings.HasPrefix(refStr, "#/") {
-					if resolving[refStr] {
-						return v
-					}
-					resolved := resolveJSONPointer(refStr[2:], root) // Remove the "#/" prefix
-					if resolved != nil {
-						resolving[refStr] = true
-						result := resolveRefsRecursive(resolved, root, resolving)
-						delete(resolving, refStr)
-						return result
-					}
-				}
-			}
-			// If we can't resolve the ref, return the original $ref
-			return v
+		if _, exists := v["$ref"]; exists {
+			return resolveReference(v, root, resolving)
 		}
 
 		// Recursively process all values in the map
@@ -280,6 +263,23 @@ func resolveRefsRecursive(current interface{}, root interface{}, resolving types
 		// For primitive types, return as-is
 		return v
 	}
+}
+
+// resolveReference follows a local reference while tracking the active chain.
+// Unresolved and circular references retain their original object.
+func resolveReference(node map[string]interface{}, root interface{}, resolving types.ResolvingRefs) interface{} {
+	ref, ok := node["$ref"].(string)
+	if !ok || !strings.HasPrefix(ref, "#/") || resolving[ref] {
+		return node
+	}
+	target := resolveJSONPointer(ref[2:], root)
+	if target == nil {
+		return node
+	}
+	resolving[ref] = true
+	result := resolveRefsRecursive(target, root, resolving)
+	delete(resolving, ref)
+	return result
 }
 
 // resolveJSONPointer resolves a JSON pointer path in the document

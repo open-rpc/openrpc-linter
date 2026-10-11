@@ -9,7 +9,8 @@ import (
 )
 
 type SchemaRule struct {
-	cache sync.Map // keyed by *types.RuleAction
+	mu    sync.Mutex
+	cache map[*types.RuleAction]*jsonschema.Schema
 }
 
 func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
@@ -41,8 +42,10 @@ func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContex
 // schemaFor caches one compiled schema per rule action so iterating over N
 // matched nodes doesn't recompile N times.
 func (r *SchemaRule) schemaFor(then *types.RuleAction) (*jsonschema.Schema, error) {
-	if cached, ok := r.cache.Load(then); ok {
-		return cached.(*jsonschema.Schema), nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.cache[then]; ok {
+		return cached, nil
 	}
 
 	compiler := jsonschema.NewCompiler()
@@ -55,6 +58,9 @@ func (r *SchemaRule) schemaFor(then *types.RuleAction) (*jsonschema.Schema, erro
 		return nil, err
 	}
 
-	actual, _ := r.cache.LoadOrStore(then, schema)
-	return actual.(*jsonschema.Schema), nil
+	if r.cache == nil {
+		r.cache = make(map[*types.RuleAction]*jsonschema.Schema)
+	}
+	r.cache[then] = schema
+	return schema, nil
 }

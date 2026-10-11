@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/open-rpc/openrpc-linter/types"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestSchemaRule(t *testing.T) {
@@ -77,5 +78,31 @@ func TestSchemaRule(t *testing.T) {
 				t.Fatalf("expected message prefix %q, got %q", tt.expectedResult, results[0].Message)
 			}
 		})
+	}
+}
+
+func TestSchemaCacheConcurrent(t *testing.T) {
+	rule := &SchemaRule{}
+	action := &types.RuleAction{FunctionOptions: map[string]interface{}{"type": "string"}}
+	type compiled struct {
+		schema *jsonschema.Schema
+		err    error
+	}
+	results := make(chan compiled, 16)
+	for range cap(results) {
+		go func() {
+			schema, err := rule.schemaFor(action)
+			results <- compiled{schema: schema, err: err}
+		}()
+	}
+	first := <-results
+	if first.err != nil || first.schema == nil {
+		t.Fatalf("first compilation: %+v", first)
+	}
+	for range cap(results) - 1 {
+		result := <-results
+		if result.err != nil || result.schema != first.schema {
+			t.Fatalf("cache returned a different result: %+v", result)
+		}
 	}
 }

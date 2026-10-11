@@ -69,24 +69,10 @@ func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath
 }
 
 func (b *builder) indexObject(obj map[string]any, schema map[string]any, path spec.NormalizedPath) {
-	props := mapOf(schema["properties"])
-
-	// Record this object as a candidate if the schema names at least one
-	// property — otherwise the node is generic (e.g. a JSONSchema we've
-	// declined to index) and has nothing to contribute.
-	if len(props) > 0 {
-		cand := &Candidate{
-			Path:        append(spec.NormalizedPath{}, path...),
-			Node:        obj,
-			SchemaTitle: stringOf(schema["title"]),
-			Fields:      make(map[string]struct{}, len(props)),
-		}
-		for field := range props {
-			cand.Fields[field] = struct{}{}
-		}
-		b.idx.ByPath[cand.Path.String()] = cand
-		for field := range cand.Fields {
-			b.idx.ByField[field] = append(b.idx.ByField[field], cand)
+	if candidate := objectCandidate(obj, schema, path); candidate != nil {
+		b.idx.ByPath[candidate.Path.String()] = candidate
+		for field := range candidate.Fields {
+			b.idx.ByField[field] = append(b.idx.ByField[field], candidate)
 		}
 	}
 
@@ -100,6 +86,25 @@ func (b *builder) indexObject(obj map[string]any, schema map[string]any, path sp
 			continue
 		}
 		b.walk(child, childSchema, append(path, spec.Name(key)))
+	}
+}
+
+// objectCandidate constructs the field description for a recognized object.
+// A schema with no named properties contributes no candidate.
+func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
+	properties := mapOf(schema["properties"])
+	if len(properties) == 0 {
+		return nil
+	}
+	fields := make(map[string]struct{}, len(properties))
+	for field := range properties {
+		fields[field] = struct{}{}
+	}
+	return &Candidate{
+		Path:        append(spec.NormalizedPath{}, path...),
+		Node:        obj,
+		SchemaTitle: stringOf(schema["title"]),
+		Fields:      fields,
 	}
 }
 

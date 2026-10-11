@@ -33,20 +33,18 @@ func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
 }
 
 func mergeRule(base types.Rule, override types.Rule) types.Rule {
-	if override.Description != "" {
-		base.Description = override.Description
+	return types.Rule{
+		Description: preferOverride(base.Description, override.Description, override.Description != ""),
+		Given:       preferOverride(base.Given, override.Given, override.Given != ""),
+		Then:        preferOverride(base.Then, override.Then, override.Then != nil),
+		Extends:     preferOverride(base.Extends, override.Extends, override.Extends != nil),
+		Severity:    preferOverride(base.Severity, override.Severity, override.Severity != ""),
 	}
-	if override.Given != "" {
-		base.Given = override.Given
-	}
-	if override.Then != nil {
-		base.Then = override.Then
-	}
-	if override.Extends != nil {
-		base.Extends = override.Extends
-	}
-	if override.Severity != "" {
-		base.Severity = override.Severity
+}
+
+func preferOverride[T any](base, override T, present bool) T {
+	if present {
+		return override
 	}
 	return base
 }
@@ -82,8 +80,8 @@ func getExtendedRules(exts []types.RuleDefaults) (map[string]types.Rule, error) 
 	return out, nil
 }
 
-func LoadRulesFile(fsys fs.FS, name string) (*RulesWrapper, error) {
-	b, err := fs.ReadFile(fsys, name)
+func LoadRulesFile(fsys fs.FS, filename string) (*RulesWrapper, error) {
+	b, err := fs.ReadFile(fsys, filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading rules file: %v\n", err)
 		return nil, err

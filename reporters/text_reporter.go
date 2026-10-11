@@ -88,47 +88,58 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 	return err
 }
 
+type violationSummary struct {
+	errors   int
+	warnings int
+	info     int
+	rules    map[string]struct{}
+}
+
+func (s *violationSummary) add(result types.RuleFunctionResult) {
+	s.rules[result.RuleID] = struct{}{}
+	switch effectiveSeverity(result.Severity) {
+	case types.SeverityWarn:
+		s.warnings++
+	case types.SeverityInfo:
+		s.info++
+	default:
+		s.errors++
+	}
+}
+
 func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 	pendings := make([]pending, 0, len(results))
-	errorCount, warnCount, infoCount := 0, 0, 0
-	ruleViolations := make(map[string]struct{})
-
-	for _, res := range results {
-		if res.Message == "" {
+	summary := violationSummary{rules: make(map[string]struct{})}
+	for _, result := range results {
+		if result.Message == "" {
 			continue
 		}
-		ruleViolations[res.RuleID] = struct{}{}
-		switch effectiveSeverity(res.Severity) {
-		case types.SeverityWarn:
-			warnCount++
-		case types.SeverityInfo:
-			infoCount++
-		default:
-			errorCount++
-		}
-
-		friendlyPath := ""
-		mIdx := -1
-		if len(res.Path) > 0 {
-			friendlyPath = truncate(location.FriendlyPath(res.Path[0]), colPath)
-			mIdx = methodIndexFromPath(res.Path[0])
-		}
-		kind, name := resolveGroup(res.PathLabels)
-		pendings = append(pendings, pending{
-			row: row{
-				path:       friendlyPath,
-				severity:   res.Severity,
-				message:    truncate(res.Message, colMessage),
-				ruleID:     truncate(res.RuleID, colRule),
-				pathLabels: res.PathLabels,
-				groupKind:  kind,
-				groupName:  name,
-			},
-			methodIdx: mIdx,
-		})
+		summary.add(result)
+		pendings = append(pendings, pendingRow(result))
 	}
+	return pendings, formatViolationSummary(summary.errors, summary.warnings, summary.info, len(summary.rules))
+}
 
-	return pendings, formatViolationSummary(errorCount, warnCount, infoCount, len(ruleViolations))
+func pendingRow(result types.RuleFunctionResult) pending {
+	path := ""
+	methodIndex := -1
+	if len(result.Path) > 0 {
+		path = truncate(location.FriendlyPath(result.Path[0]), colPath)
+		methodIndex = methodIndexFromPath(result.Path[0])
+	}
+	kind, name := resolveGroup(result.PathLabels)
+	return pending{
+		row: row{
+			path:       path,
+			severity:   result.Severity,
+			message:    truncate(result.Message, colMessage),
+			ruleID:     truncate(result.RuleID, colRule),
+			pathLabels: result.PathLabels,
+			groupKind:  kind,
+			groupName:  name,
+		},
+		methodIdx: methodIndex,
+	}
 }
 
 func groupRows(pendings []pending) []*bucket {
@@ -144,10 +155,7 @@ func groupRows(pendings []pending) []*bucket {
 			buckets[key] = b
 			groups = append(groups, b)
 		}
-		b.rows = append(b.rows, p.row)
-		if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
-			b.methodIx = p.methodIdx
-		}
+		b.add(p)
 	}
 
 	sort.SliceStable(groups, func(i, j int) bool { return groups[i].less(groups[j]) })
@@ -164,6 +172,13 @@ func groupRows(pendings []pending) []*bucket {
 		})
 	}
 	return groups
+}
+
+func (b *bucket) add(p pending) {
+	b.rows = append(b.rows, p.row)
+	if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
+		b.methodIx = p.methodIdx
+	}
 }
 
 func (b *bucket) less(other *bucket) bool {

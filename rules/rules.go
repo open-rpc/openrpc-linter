@@ -48,23 +48,28 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 
 	var allResults []types.RuleFunctionResult
 	for i := range targets {
-		t := targets[i]
-		itemContext := context
-		itemContext.Path = t.PathString()
-		itemContext.Target = &t
-
-		for _, result := range ruleFunc.RunRule(t.Node, itemContext) {
-			if result.Message == "" {
-				continue
-			}
-			if len(result.Path) == 0 {
-				result.Path = []string{t.PathString()}
-			}
-			allResults = append(allResults, result)
-		}
+		allResults = append(allResults, executeTarget(ruleFunc, &targets[i], context)...)
 	}
 
 	return allResults, nil
+}
+
+// executeTarget binds one selected node to the shared rule context and
+// normalizes diagnostics before returning them to the rule executor.
+func executeTarget(ruleFunc types.RuleFunction, target *selector.Target, context types.RuleFunctionContext) []types.RuleFunctionResult {
+	context.Path = target.PathString()
+	context.Target = target
+	var results []types.RuleFunctionResult
+	for _, result := range ruleFunc.RunRule(target.Node, context) {
+		if result.Message == "" {
+			continue
+		}
+		if len(result.Path) == 0 {
+			result.Path = []string{target.PathString()}
+		}
+		results = append(results, result)
+	}
+	return results
 }
 
 func GetFieldFromNode(node *yaml.Node, field string) *yaml.Node {

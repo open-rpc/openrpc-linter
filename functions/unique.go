@@ -13,10 +13,13 @@ import (
 const globalScopeKey = ""
 
 type UniqueRule struct {
-	seen       map[string]map[string]string
-	scopePaths []spec.NormalizedPath
-	scopeReady bool
-	scopeErr   error
+	seen  map[string]map[string]string
+	scope *uniqueScope
+}
+
+type uniqueScope struct {
+	paths []spec.NormalizedPath
+	err   error
 }
 
 func NewUniqueRule() *UniqueRule {
@@ -64,6 +67,18 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		}}
 	}
 
+	firstPath, duplicate := r.remember(scopeKey, key, t.PathString())
+	if duplicate {
+		return []types.RuleFunctionResult{{
+			Message: fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath),
+			Path:    resultPath(t.PathString()),
+		}}
+	}
+	return nil
+}
+
+// remember owns the per-scope first-seen state. It never replaces a first path.
+func (r *UniqueRule) remember(scopeKey, key, path string) (string, bool) {
 	if r.seen == nil {
 		r.seen = map[string]map[string]string{}
 	}
@@ -72,14 +87,11 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		bucket = map[string]string{}
 		r.seen[scopeKey] = bucket
 	}
-	if firstPath, dup := bucket[key]; dup {
-		return []types.RuleFunctionResult{{
-			Message: fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath),
-			Path:    resultPath(t.PathString()),
-		}}
+	if firstPath, duplicate := bucket[key]; duplicate {
+		return firstPath, true
 	}
-	bucket[key] = t.PathString()
-	return nil
+	bucket[key] = path
+	return "", false
 }
 
 func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
@@ -101,41 +113,43 @@ func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
 }
 
 func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
-	if r.scopeReady {
-		return r.scopeErr
+	if r.scope != nil {
+		return r.scope.err
 	}
-	r.scopeReady = true
+	paths, err := uniqueScopePaths(ctx)
+	r.scope = &uniqueScope{paths: paths, err: err}
+	return err
+}
 
-	if ctx.Rule == nil || ctx.Rule.Then == nil || ctx.Rule.Then.FunctionOptions == nil {
-		return nil
+func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, error) {
+	if ctx.Rule == nil || ctx.Rule.Then == nil {
+		return nil, nil
 	}
 	raw, _ := ctx.Rule.Then.FunctionOptions["scope"].(string)
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
-
 	p, err := jsonpath.Parse(raw)
 	if err != nil {
-		r.scopeErr = err
-		return err
+		return nil, err
 	}
-
 	doc := ctx.Document
 	if ctx.ResolvedDocument != nil {
 		doc = ctx.ResolvedDocument
 	}
-	for _, n := range p.SelectLocated(doc) {
-		r.scopePaths = append(r.scopePaths, n.Path)
+	var paths []spec.NormalizedPath
+	for _, node := range p.SelectLocated(doc) {
+		paths = append(paths, node.Path)
 	}
-	return nil
+	return paths, nil
 }
 
 func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
-	if len(r.scopePaths) == 0 {
+	if len(r.scope.paths) == 0 {
 		return globalScopeKey, true
 	}
 	bestIdx, bestLen := -1, -1
-	for i, sp := range r.scopePaths {
+	for i, sp := range r.scope.paths {
 		if selector.IsUnder(t.Path, sp) && len(sp) > bestLen {
 			bestIdx, bestLen = i, len(sp)
 		}
@@ -143,7 +157,7 @@ func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
 	if bestIdx < 0 {
 		return "", false
 	}
-	return r.scopePaths[bestIdx].String(), true
+	return r.scope.paths[bestIdx].String(), true
 }
 
 func comparableKey(value interface{}) (key string, displayValue string, supported bool) {

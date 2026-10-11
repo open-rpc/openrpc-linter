@@ -113,8 +113,8 @@ func TestUniqueScopeUsesResolvedDocument(t *testing.T) {
 	if got := r.RunRule("ping", ctx); len(got) != 0 {
 		t.Fatalf("first: %+v", got)
 	}
-	if len(r.scopePaths) != 1 {
-		t.Fatalf("expected resolved scope, got %v", r.scopePaths)
+	if len(r.scope.paths) != 1 {
+		t.Fatalf("expected resolved scope, got %v", r.scope.paths)
 	}
 	if got := r.RunRule("ping", ctx); len(got) != 1 {
 		t.Fatalf("expected duplicate in resolved scope: %+v", got)

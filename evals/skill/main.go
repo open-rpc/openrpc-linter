@@ -23,10 +23,17 @@ func runMain(exit func(int)) {
 	}
 }
 
-func command(dir, bin, input string, args ...string) ([]byte, error) {
+// executionEnvironment keeps the working directory and executable search path
+// together for all commands in one evaluation workspace.
+type executionEnvironment struct {
+	directory string
+	bin       string
+}
+
+func (e executionEnvironment) command(input string, args ...string) ([]byte, error) {
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cmd.Dir = e.directory
+	cmd.Env = append(os.Environ(), "PATH="+e.bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cmd.Stdin = strings.NewReader(input)
 	return cmd.CombinedOutput()
 }
@@ -41,28 +48,25 @@ func run() error {
 		return err
 	}
 	binary := filepath.Join(bin, "openrpc-linter")
-	output, err := command(root, bin, "", "go", "build", "-o", binary, ".")
+	output, err := (executionEnvironment{directory: root, bin: bin}).command("", "go", "build", "-o", binary, ".")
 	if err != nil {
 		return fmt.Errorf("build: %w\n%s", err, output)
 	}
-	err = prepare(root, workspace)
+	if err := prepare(root, workspace); err != nil {
+		return err
+	}
+	environment := executionEnvironment{directory: workspace, bin: bin}
+	prompt, err := preparePrompt(environment, directory, binary)
 	if err != nil {
 		return err
 	}
-	prompt, err := preparePrompt(workspace, bin, directory, binary)
-	if err != nil {
+	if err := runAgent(environment, directory, prompt); err != nil {
 		return err
 	}
-	err = runAgent(workspace, bin, directory, prompt)
-	if err != nil {
+	if err := check(root, workspace); err != nil {
 		return err
 	}
-	err = check(root, workspace)
-	if err != nil {
-		return err
-	}
-	err = loggedCommand(workspace, bin, "", filepath.Join(directory, "lint.log"), "final lint", binary, "lint", "openrpc.json", "-r", "rules.yml")
-	if err != nil {
+	if err := environment.loggedCommand("", filepath.Join(directory, "lint.log"), "final lint", binary, "lint", "openrpc.json", "-r", "rules.yml"); err != nil {
 		return err
 	}
 	fmt.Println("PASS: description added, other fields and rules preserved, lint passes.")
@@ -70,14 +74,14 @@ func run() error {
 	return nil
 }
 
-func setup() (directory, workspace, bin string, err error) {
-	directory, err = os.MkdirTemp("", "openrpc-skill-eval-")
+func setup() (string, string, string, error) {
+	directory, err := os.MkdirTemp("", "openrpc-skill-eval-")
 	if err != nil {
-		return
+		return "", "", "", err
 	}
 	fmt.Println("Eval artifacts:", directory)
-	workspace, bin, err = prepareDirectories(directory)
-	return
+	workspace, bin, err := prepareDirectories(directory)
+	return directory, workspace, bin, err
 }
 
 func prepareDirectories(directory string) (workspace, bin string, err error) {
@@ -106,16 +110,16 @@ func prepare(root, workspace string) error {
 	return nil
 }
 
-func runAgent(workspace, bin, directory, prompt string) error {
+func runAgent(environment executionEnvironment, directory, prompt string) error {
 	args := os.Args[1:]
 	if len(args) == 0 {
 		args = []string{"codex", "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "workspace-write", "-"}
 	}
-	return loggedCommand(workspace, bin, prompt, filepath.Join(directory, "agent.log"), "agent", args...)
+	return environment.loggedCommand(prompt, filepath.Join(directory, "agent.log"), "agent", args...)
 }
 
-func loggedCommand(workspace, bin, input, logPath, label string, args ...string) error {
-	output, commandErr := command(workspace, bin, input, args...)
+func (e executionEnvironment) loggedCommand(input, logPath, label string, args ...string) error {
+	output, commandErr := e.command(input, args...)
 	err := os.WriteFile(logPath, output, 0600)
 	if err != nil {
 		return err
@@ -126,8 +130,8 @@ func loggedCommand(workspace, bin, input, logPath, label string, args ...string)
 	return nil
 }
 
-func preparePrompt(workspace, bin, directory, binary string) (string, error) {
-	skill, err := command(workspace, bin, "", binary, "--skill")
+func preparePrompt(environment executionEnvironment, directory, binary string) (string, error) {
+	skill, err := environment.command("", binary, "--skill")
 	if err != nil {
 		return "", fmt.Errorf("read skill: %w", err)
 	}

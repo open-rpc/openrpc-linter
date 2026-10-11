@@ -5,6 +5,7 @@ package location
 import (
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
@@ -116,10 +117,7 @@ func FriendlyPath(jsonPath string) string {
 	if jsonPath == "" || jsonPath == "$" {
 		return jsonPath
 	}
-	s := jsonPath
-	if len(s) > 0 && s[0] == '$' {
-		s = s[1:]
-	}
+	s := strings.TrimPrefix(jsonPath, "$")
 
 	matches := jsonPathSegmentRe.FindAllStringSubmatch(s, -1)
 	if len(matches) == 0 {
@@ -143,23 +141,19 @@ func FriendlyPath(jsonPath string) string {
 }
 
 func parseJSONPath(path string) []pathSegment {
-	s := path
-	if len(s) > 0 && s[0] == '$' {
-		s = s[1:]
-	}
+	s := strings.TrimPrefix(path, "$")
 
 	matches := jsonPathSegmentRe.FindAllStringSubmatch(s, -1)
 	out := make([]pathSegment, 0, len(matches))
-	for _, m := range matches {
-		if m[1] != "" {
-			out = append(out, pathSegment{key: m[1]})
-			continue
+	for _, match := range matches {
+		segment := pathSegment{key: match[1]}
+		if match[1] == "" {
+			index, _ := strconv.Atoi(match[2])
+			segment = pathSegment{index: index, isIdx: true}
 		}
-		if m[2] != "" {
-			idx, _ := strconv.Atoi(m[2])
-			out = append(out, pathSegment{index: idx, isIdx: true})
-		}
+		out = append(out, segment)
 	}
+
 	return out
 }
 
