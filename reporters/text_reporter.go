@@ -3,10 +3,11 @@ package reporters
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
-	"github.com/open-rpc/openrpc-linter/location"
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
 )
 
@@ -53,43 +54,52 @@ type pending struct {
 	methodIdx int
 }
 
+// textLayout carries the shared column width and color policy for one report.
+type textLayout struct {
+	pathWidth int
+	color     bool
+}
+
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
 	pendings, summary := collectRows(results)
 	if len(pendings) == 0 {
-		_, err := fmt.Fprintf(output, "All %d rules passed\n", totalRules)
-		return err
+		return writeChunks(output, []string{fmt.Sprintf("All %d rules passed\n", totalRules)})
 	}
-	groups := groupRows(pendings)
-	pathW := pathColumnWidth(pendings)
-	colorEnabled := supportsColor(output)
-	if r.SourceFile != "" {
-		if _, err := fmt.Fprintf(output, "%s\n\n", r.SourceFile); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(output, "%s\n\n", summary); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(output, formatColumnHeaderRow(pathW)); err != nil {
-		return err
-	}
-	for _, group := range groups {
-		if err := group.write(output, pathW, colorEnabled); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintf(output, "\n%s\n", summary)
-	return err
+	chunks := violationReport(pendings, summary, r.SourceFile, supportsColor(output))
+	return writeChunks(output, chunks)
 }
 
-type violationSummary struct {
-	counts [3]int
-	rules  map[string]struct{}
+// violationReport builds report text without touching the destination writer.
+// Each chunk preserves one existing output boundary and its byte order.
+func violationReport(pendings []pending, summary, source string, colorEnabled bool) []string {
+	layout := textLayout{pathWidth: pathColumnWidth(pendings), color: colorEnabled}
+	var body []string
+	for _, group := range groupRows(pendings) {
+		body = append(body, group.render(layout)...)
+	}
+	return slices.Concat(reportHeader(source, summary, layout.pathWidth), body, []string{"\n" + summary + "\n"})
 }
 
-func (s *violationSummary) add(result types.RuleFunctionResult) {
-	s.rules[result.RuleID] = struct{}{}
-	s.counts[severityIndex(result.Severity)]++
+func reportHeader(source, summary string, pathW int) []string {
+	header := []string{summary + "\n\n", formatColumnHeaderRow(pathW)}
+	if source == "" {
+		return header
+	}
+	return slices.Concat([]string{source + "\n\n"}, header)
+}
+
+// writeChunks is the report's single output boundary; failures stop all writes.
+func writeChunks(output io.Writer, chunks []string) error {
+	for _, chunk := range chunks {
+		written, err := io.WriteString(output, chunk)
+		if err != nil {
+			return err
+		}
+		if written != len(chunk) {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
 }
 
 // severityIndex shares the default-to-error policy used by report labels.
@@ -106,23 +116,26 @@ func severityIndex(severity types.Severity) int {
 
 func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 	pendings := make([]pending, 0, len(results))
-	summary := violationSummary{rules: make(map[string]struct{})}
+	counts := [3]int{}
+	rules := make(map[string]struct{})
 	for _, result := range results {
 		if result.Message == "" {
 			continue
 		}
-		summary.add(result)
+		counts[severityIndex(result.Severity)]++
+		rules[result.RuleID] = struct{}{}
 		pendings = append(pendings, pendingRow(result))
 	}
-	return pendings, formatViolationSummary(summary.counts[0], summary.counts[1], summary.counts[2], len(summary.rules))
+	return pendings, formatViolationSummary(counts[0], counts[1], counts[2], len(rules))
 }
 
 func pendingRow(result types.RuleFunctionResult) pending {
 	path := ""
 	methodIndex := -1
 	if len(result.Path) > 0 {
-		path = truncate(location.FriendlyPath(result.Path[0]), colPath)
-		methodIndex = methodIndexFromPath(result.Path[0])
+		position, _ := paths.Parse(result.Path[0])
+		path = truncate(position.Friendly(), colPath)
+		methodIndex = position.MethodIndex()
 	}
 	kind, name := resolveGroup(result.PathLabels)
 	return pending{
@@ -139,43 +152,43 @@ func pendingRow(result types.RuleFunctionResult) pending {
 	}
 }
 
+// groupRows owns the grouping table. Buckets are complete before publication.
 func groupRows(pendings []pending) []*bucket {
-	// Bucket rows by (kind, name), tracking the smallest method index per
-	// bucket so method groups can be ordered by document position.
-	buckets := make(map[groupKey]*bucket)
-	groups := make([]*bucket, 0)
+	members := make(map[groupKey][]pending)
 	for _, p := range pendings {
 		key := groupKey{kind: p.row.groupKind, name: p.row.groupName}
-		b, ok := buckets[key]
-		if !ok {
-			b = &bucket{kind: p.row.groupKind, name: p.row.groupName, methodIx: -1}
-			buckets[key] = b
-			groups = append(groups, b)
-		}
-		b.add(p)
+		members[key] = append(members[key], p)
 	}
-
+	groups := make([]*bucket, 0, len(members))
+	for key, rows := range members {
+		groups = append(groups, bucketFor(key, rows))
+	}
 	sort.SliceStable(groups, func(i, j int) bool { return groups[i].less(groups[j]) })
-	for _, group := range groups {
-		rows := group.rows
-		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].path != rows[j].path {
-				return rows[i].path < rows[j].path
-			}
-			if rows[i].ruleID != rows[j].ruleID {
-				return rows[i].ruleID < rows[j].ruleID
-			}
-			return rows[i].message < rows[j].message
-		})
-	}
 	return groups
 }
 
-func (b *bucket) add(p pending) {
-	b.rows = append(b.rows, p.row)
-	if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
-		b.methodIx = p.methodIdx
+// bucketFor derives method position and row order from owned members.
+func bucketFor(key groupKey, members []pending) *bucket {
+	rows := make([]row, len(members))
+	methodIndex := -1
+	for i, member := range members {
+		rows[i] = member.row
+		if member.methodIdx >= 0 && (methodIndex < 0 || member.methodIdx < methodIndex) {
+			methodIndex = member.methodIdx
+		}
 	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].less(rows[j]) })
+	return &bucket{kind: key.kind, name: key.name, rows: rows, methodIx: methodIndex}
+}
+
+func (r row) less(other row) bool {
+	if r.path != other.path {
+		return r.path < other.path
+	}
+	if r.ruleID != other.ruleID {
+		return r.ruleID < other.ruleID
+	}
+	return r.message < other.message
 }
 
 func (b *bucket) less(other *bucket) bool {
@@ -218,30 +231,32 @@ func pathColumnWidth(pendings []pending) int {
 	return pathW
 }
 
-func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
-	if _, err := fmt.Fprintf(output, "\n%s\n", formatGroupHeader(b.kind, b.name)); err != nil {
-		return err
-	}
+func (b *bucket) render(layout textLayout) []string {
+	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
 	for _, row := range b.rows {
-		if _, err := io.WriteString(output, row.formattedLine(pathW, colorEnabled)); err != nil {
-			return err
-		}
-		for _, sec := range formatSecondaryLabels(row.pathLabels, row.groupKind) {
-			styled := colorize(truncate(sec, colMessage), ansiDarkGrey, colorEnabled)
-			if _, err := fmt.Fprintf(output, "    %s\n", styled); err != nil {
-				return err
-			}
-		}
+		chunks = append(chunks, row.render(layout)...)
 	}
-	return nil
+	return chunks
 }
 
-// formattedLine owns column styling; the bucket owns write order and errors.
-func (r row) formattedLine(pathW int, colorEnabled bool) string {
-	pathCell := styledCell(r.path, pathW, ansiDarkGrey, colorEnabled)
-	severityCell := formatSeverityCol(r.severity, colorEnabled)
-	messageCell := styledCell(r.message, colMessage, ansiLightGrey, colorEnabled)
-	ruleCell := colorize(r.ruleID, ansiDarkGrey, colorEnabled)
+// render keeps a row and its continuation labels together.
+func (r row) render(layout textLayout) []string {
+	secondary := formatSecondaryLabels(r.pathLabels, r.groupKind)
+	chunks := make([]string, len(secondary)+1)
+	chunks[0] = r.formattedLine(layout)
+	for i, label := range secondary {
+		styled := colorize(truncate(label, colMessage), ansiDarkGrey, layout.color)
+		chunks[i+1] = "    " + styled + "\n"
+	}
+	return chunks
+}
+
+// formattedLine owns column styling; the bucket owns row order; the writer owns output errors.
+func (r row) formattedLine(layout textLayout) string {
+	pathCell := styledCell(r.path, layout.pathWidth, ansiDarkGrey, layout.color)
+	severityCell := formatSeverityCol(r.severity, layout.color)
+	messageCell := styledCell(r.message, colMessage, ansiLightGrey, layout.color)
+	ruleCell := colorize(r.ruleID, ansiDarkGrey, layout.color)
 	return formatViolationLine(pathCell, severityCell, messageCell, ruleCell)
 }
 

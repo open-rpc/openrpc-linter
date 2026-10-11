@@ -205,6 +205,9 @@ func TestSelectCompoundDescendant(t *testing.T) {
 	if tgt.PathString() != "$['methods'][0]['result']['schema']" {
 		t.Fatalf("unexpected compound target path: %s", tgt.PathString())
 	}
+	if tgt.SchemaTitle != "contentDescriptorObject" {
+		t.Fatalf("compound target lost its document schema title: %q", tgt.SchemaTitle)
+	}
 }
 
 // ---------- Helpers ----------

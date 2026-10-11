@@ -26,38 +26,41 @@ func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 	if p == nil {
 		return nil
 	}
-	segments := p.Query().Segments()
-	return selectSegments(segments, doc, idx)
+	return (selection{segments: p.Query().Segments(), current: doc, index: idx}).targets()
 }
 
-// selectSegments evaluates segments against current.
-// Returned paths are relative to current; compound selection rebases them.
-// idx is the precomputed schema-aware Index.
-func selectSegments(
-	segments []*spec.Segment,
-	current any,
-	idx *Index,
-) []Target {
+// selection binds a query fragment to its current node and document index.
+// base tracks the current node's document path; returned target paths stay local.
+type selection struct {
+	segments []*spec.Segment
+	current  any
+	index    *Index
+	base     spec.NormalizedPath
+}
+
+func (s selection) targets() []Target {
+	segments := s.segments
 	if len(segments) == 0 {
-		return []Target{valueTarget(nil, current)}
+		return []Target{valueTarget(nil, s.current)}
 	}
 
 	lastDescendant := lastDescendantIndex(segments)
 	if lastDescendant < 0 {
-		return childTargets(segments, current, idx)
+		return s.children()
 	}
 
 	if lastDescendant == len(segments)-1 {
 		field, named := terminalName(segments[lastDescendant])
-		if !named || idx == nil {
-			return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
+		if !named || s.index == nil {
+			return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), s.current)
 		}
-		return descendantFieldTargets(segments[:lastDescendant], field, current, idx)
+		return descendantFieldTargets(segments[:lastDescendant], field, s.current, s.index)
 	}
 	// Query evaluation only reads segments, so the recursive prefix can borrow
 	// the original slice instead of copying the same prefix and descendant.
-	midTargets := selectSegments(segments[:lastDescendant+1], current, idx)
-	return compoundTargets(midTargets, segments[lastDescendant+1:], idx)
+	prefix := s
+	prefix.segments = segments[:lastDescendant+1]
+	return s.compound(prefix.targets(), segments[lastDescendant+1:])
 }
 
 func lastDescendantIndex(segments []*spec.Segment) int {
@@ -70,30 +73,35 @@ func lastDescendantIndex(segments []*spec.Segment) int {
 	return last
 }
 
-// childTargets reports missing named fields and otherwise uses value mode.
-func childTargets(segments []*spec.Segment, current any, idx *Index) []Target {
+// children reports missing named fields and otherwise uses value mode.
+func (s selection) children() []Target {
+	segments := s.segments
 	field, ok := terminalName(segments[len(segments)-1])
 	if !ok {
-		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
+		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), s.current)
 	}
 	parentPath := jsonpath.New(spec.Query(true, segments[:len(segments)-1]...))
-	parents := parentPath.SelectLocated(current)
+	parents := parentPath.SelectLocated(s.current)
 	out := make([]Target, 0, len(parents))
 	for _, parent := range parents {
-		out = append(out, fieldTarget(parent.Node, parent.Path, field, candidateTitle(idx, parent.Path)))
+		out = append(out, fieldTarget(parent.Node, parent.Path, field, candidateTitle(s.index, parent.Path, s.base)))
 	}
 	return out
 }
 
-// compoundTargets evaluates the remaining query beneath each existing
+// compound evaluates the remaining query beneath each existing
 // intermediate node, then restores its document-relative paths.
-func compoundTargets(intermediates []Target, suffix []*spec.Segment, idx *Index) []Target {
+func (s selection) compound(intermediates []Target, suffix []*spec.Segment) []Target {
 	out := make([]Target, 0, len(intermediates))
 	for _, intermediate := range intermediates {
 		if !intermediate.Exists {
 			continue
 		}
-		children := selectSegments(suffix, intermediate.Node, idx)
+		childSelection := s
+		childSelection.segments = suffix
+		childSelection.current = intermediate.Node
+		childSelection.base = slices.Concat(s.base, intermediate.Path)
+		children := childSelection.targets()
 		for _, child := range children {
 			out = append(out, rebase(child, intermediate.Path))
 		}
@@ -171,9 +179,12 @@ func terminalName(seg *spec.Segment) (string, bool) {
 // candidateTitle looks up the matched schema title for a parent path so
 // diagnostics can say e.g. "Missing field 'description' on
 // methodObject at ...". Returns "" if the parent wasn't indexed.
-func candidateTitle(idx *Index, path spec.NormalizedPath) string {
+func candidateTitle(idx *Index, path, base spec.NormalizedPath) string {
 	if idx == nil {
 		return ""
+	}
+	if len(base) > 0 {
+		path = slices.Concat(base, path)
 	}
 	if c, ok := idx.ByPath[path.String()]; ok {
 		return c.SchemaTitle

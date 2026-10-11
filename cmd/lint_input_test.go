@@ -19,7 +19,7 @@ func TestLintInputFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
-			_, err := loadLintDocument(writeLintFixture(t, "openrpc.json", tc.content), &output)
+			err := RunLint(LintOptions{OpenRPCFile: writeLintFixture(t, "openrpc.json", tc.content), Output: &output})
 			if err == nil || !strings.Contains(output.String(), tc.message) {
 				t.Fatalf("got %v, %q", err, output.String())
 			}
@@ -34,11 +34,11 @@ func TestLintInputFailures(t *testing.T) {
 		t.Fatal("accepted missing rules")
 	}
 	empty := writeLintFixture(t, "rules.yml", "rules: {}")
-	if _, err := loadLintRules(empty, &output); err == nil {
+	if _, err := loadLintRules(empty); err == nil {
 		t.Fatal("accepted empty rules")
 	}
 	unknown := writeLintFixture(t, "rules.yml", "extends: [unknown]")
-	if _, err := loadLintRules(unknown, &output); err == nil {
+	if _, err := loadLintRules(unknown); err == nil {
 		t.Fatal("accepted unknown extension")
 	}
 	invalid := writeLintFixture(t, "rules.yml", "rules:\n  r:\n    severity: invalid\n")
@@ -84,9 +84,8 @@ func TestLintCommandDefaultsAndExplicitFile(t *testing.T) {
 }
 
 func TestPrepareLintDocumentRejectsNonJSONValue(t *testing.T) {
-	var output bytes.Buffer
-	if _, err := prepareLintDocument(make(chan int), &output); err == nil || !strings.Contains(output.String(), "Error resolving $refs") {
-		t.Fatalf("resolution error: %v %q", err, output.String())
+	if _, err := prepareLintDocument(make(chan int)); err == nil || !strings.Contains(err.Error(), "Error resolving $refs") {
+		t.Fatalf("resolution error: %v", err)
 	}
 }
 

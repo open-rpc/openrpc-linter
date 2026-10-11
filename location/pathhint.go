@@ -3,14 +3,10 @@
 package location
 
 import (
-	"regexp"
-	"strconv"
-	"strings"
-
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
+	"github.com/theory/jsonpath/spec"
 )
-
-var jsonPathSegmentRe = regexp.MustCompile(`\['([^']+)'\]|\[(\d+)\]`)
 
 type pathSegment struct {
 	key   string
@@ -122,49 +118,33 @@ func Enrich(results []types.RuleFunctionResult, doc any) {
 
 // FriendlyPath converts a normalized JSONPath to dot/bracket form for display.
 func FriendlyPath(jsonPath string) string {
-	if jsonPath == "" || jsonPath == "$" {
-		return jsonPath
-	}
-	s := strings.TrimPrefix(jsonPath, "$")
-
-	matches := jsonPathSegmentRe.FindAllStringSubmatch(s, -1)
-	if len(matches) == 0 {
-		return jsonPath
-	}
-
-	var out []byte
-	for _, m := range matches {
-		segment := "[" + m[2] + "]"
-		if m[1] != "" {
-			segment = m[1]
-			if len(out) > 0 {
-				segment = "." + segment
-			}
-		}
-		out = append(out, segment...)
-	}
-	return string(out)
+	path, _ := paths.Parse(jsonPath)
+	return path.Friendly()
 }
 
 func parseJSONPath(path string) []pathSegment {
-	s := strings.TrimPrefix(path, "$")
-
-	matches := jsonPathSegmentRe.FindAllStringSubmatch(s, -1)
-	out := make([]pathSegment, 0, len(matches))
-	for _, match := range matches {
-		segment := pathSegment{key: match[1]}
-		if match[1] == "" {
-			index, _ := strconv.Atoi(match[2])
-			segment = pathSegment{index: index, isIdx: true}
-		}
-		out = append(out, segment)
+	location, valid := paths.Parse(path)
+	if !valid {
+		return nil
 	}
+	selectors := location.Selectors()
+	segments := make([]pathSegment, len(selectors))
+	for i, selector := range selectors {
+		segments[i] = segmentFromSelector(selector)
+	}
+	return segments
+}
 
-	return out
+func segmentFromSelector(selector spec.NormalSelector) pathSegment {
+	if index, ok := selector.(spec.Index); ok {
+		return pathSegment{index: int(index), isIdx: true}
+	}
+	name, _ := selector.(spec.Name)
+	return pathSegment{key: string(name)}
 }
 
 func stringField(node any, field string) (string, bool) {
 	object, _ := node.(map[string]any)
-	value, ok := object[field].(string)
-	return value, ok && value != ""
+	value, _ := object[field].(string)
+	return value, value != ""
 }

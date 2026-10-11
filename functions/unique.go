@@ -2,7 +2,6 @@ package functions
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/open-rpc/openrpc-linter/selector"
 	"github.com/open-rpc/openrpc-linter/types"
@@ -13,17 +12,17 @@ import (
 const globalScopeKey = ""
 
 type UniqueRule struct {
-	seen  map[string]map[string]string
 	scope *uniqueScope
 }
 
 type uniqueScope struct {
 	paths []spec.NormalizedPath
 	err   error
+	seen  map[string]map[primitiveKey]string
 }
 
 func NewUniqueRule() *UniqueRule {
-	return &UniqueRule{seen: map[string]map[string]string{}}
+	return &UniqueRule{}
 }
 
 func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
@@ -37,52 +36,53 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return ruleFailure("unique scope option invalid: "+err.Error(), path)
 	}
 
-	scopeKey, inScope := r.scopeKeyFor(t)
+	scopeKey, inScope := r.scope.keyFor(t)
 	if !inScope {
 		return nil
 	}
 
-	value, skip, err := uniqueValue(value, context)
+	key, included, err := uniqueCandidate(value, context)
 	if err != nil {
 		return ruleFailure(err.Error(), path)
 	}
-	if skip {
+	if !included {
 		return nil
 	}
-	key, display, supported := comparableKey(value)
-	if !supported {
-		return ruleFailure("unique value must be primitive", path)
-	}
-
-	firstPath, duplicate := r.remember(scopeKey, key, path)
+	firstPath, duplicate := r.scope.remember(scopeKey, key, path)
 	if duplicate {
-		return ruleFailure(fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath), path)
+		return ruleFailure(fmt.Sprintf("Duplicate value %s (first seen at %s)", key.display(), firstPath), path)
 	}
 	return nil
 }
 
-// uniqueValue applies the missing-field policy before primitive comparison.
-// It validates the option even for present fields, as RunRule has always done.
-func uniqueValue(value any, context types.RuleFunctionContext) (any, bool, error) {
+// uniqueCandidate applies presence policy and validates primitive identity.
+func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey, bool, error) {
 	ignoreMissing, err := uniqueIgnoreMissing(context)
 	if err != nil {
-		return nil, false, err
+		return primitiveKey{}, false, err
 	}
 	if missingField(context.Target) {
-		return nil, ignoreMissing, nil
+		if ignoreMissing {
+			return primitiveKey{}, false, nil
+		}
+		value = nil
 	}
-	return value, false, nil
+	key, supported := comparableKey(value)
+	if !supported {
+		return primitiveKey{}, false, fmt.Errorf("unique value must be primitive")
+	}
+	return key, true, nil
 }
 
 // remember owns the per-scope first-seen state. It never replaces a first path.
-func (r *UniqueRule) remember(scopeKey, key, path string) (string, bool) {
-	if r.seen == nil {
-		r.seen = map[string]map[string]string{}
+func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (string, bool) {
+	if s.seen == nil {
+		s.seen = map[string]map[primitiveKey]string{}
 	}
-	bucket, exists := r.seen[scopeKey]
+	bucket, exists := s.seen[scopeKey]
 	if !exists {
-		bucket = map[string]string{}
-		r.seen[scopeKey] = bucket
+		bucket = map[primitiveKey]string{}
+		s.seen[scopeKey] = bucket
 	}
 	if firstPath, duplicate := bucket[key]; duplicate {
 		return firstPath, true
@@ -134,12 +134,12 @@ func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, err
 	return paths, nil
 }
 
-func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
-	if len(r.scope.paths) == 0 {
+func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
+	if len(s.paths) == 0 {
 		return globalScopeKey, true
 	}
 	bestIdx, bestLen := -1, -1
-	for i, sp := range r.scope.paths {
+	for i, sp := range s.paths {
 		if selector.IsUnder(t.Path, sp) && len(sp) > bestLen {
 			bestIdx, bestLen = i, len(sp)
 		}
@@ -147,22 +147,5 @@ func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
 	if bestIdx < 0 {
 		return "", false
 	}
-	return r.scope.paths[bestIdx].String(), true
-}
-
-func comparableKey(value interface{}) (key string, displayValue string, supported bool) {
-	switch v := value.(type) {
-	case nil:
-		return "null", "null", true
-	case string:
-		return "string:" + v, strconv.Quote(v), true
-	case bool:
-		display := strconv.FormatBool(v)
-		return "bool:" + display, display, true
-	case float64:
-		display := strconv.FormatFloat(v, 'g', -1, 64)
-		return "number:" + display, display, true
-	default:
-		return "", "", false
-	}
+	return s.paths[bestIdx].String(), true
 }

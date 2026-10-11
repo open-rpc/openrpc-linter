@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
 )
 
@@ -57,7 +58,8 @@ func TestSecondaryDescriptorAndOverflowIndex(t *testing.T) {
 	if got := formatSecondaryLabels(types.PathLabels{Descriptor: "Item"}, groupKindMethod); !reflect.DeepEqual(got, []string{`descriptor: "Item"`}) {
 		t.Fatalf("secondary labels: %v", got)
 	}
-	if got := methodIndexFromPath("$['methods'][" + strings.Repeat("9", 100) + "]"); got != -1 {
+	position, _ := paths.Parse("$['methods'][" + strings.Repeat("9", 100) + "]")
+	if got := position.MethodIndex(); got != -1 {
 		t.Fatalf("overflow index: %d", got)
 	}
 }

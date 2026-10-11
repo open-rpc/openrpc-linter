@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -571,6 +572,24 @@ func TestTextReporterReturnsWriteErrors(t *testing.T) {
 					t.Fatalf("writes continue after error: got %d, want %d", writer.calls, failAt)
 				}
 			})
+		}
+	}
+}
+
+// A writer that reports success after accepting only part of a chunk.
+type shortReportWriter struct{ calls int }
+
+func (writer *shortReportWriter) Write(data []byte) (int, error) {
+	writer.calls++
+	return len(data) - 1, nil
+}
+
+func TestTextReporterRejectsShortWrites(t *testing.T) {
+	for _, results := range [][]types.RuleFunctionResult{nil, {{Message: "missing"}}} {
+		writer := &shortReportWriter{}
+		err := (&TextReporter{}).Format(results, 1, writer)
+		if !errors.Is(err, io.ErrShortWrite) || writer.calls != 1 {
+			t.Fatalf("expected short-write error and one write, got %v and %d", err, writer.calls)
 		}
 	}
 }

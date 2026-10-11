@@ -55,17 +55,17 @@ func normalizeSeverity(severity types.Severity) (types.Severity, error) {
 }
 
 func RunLint(opts LintOptions) error {
-	context, err := loadLintDocument(opts.OpenRPCFile, opts.Output)
+	context, err := loadLintDocument(opts.OpenRPCFile)
 	if err != nil {
-		return err
+		return reportLintFailure(err, opts.Output)
 	}
-	ruleSet, err := loadLintRules(opts.RulesFile, opts.Output)
+	ruleSet, err := loadLintRules(opts.RulesFile)
 	if err != nil {
-		return err
+		return reportLintFailure(err, opts.Output)
 	}
-	results, errorCount, err := evaluateLintRules(ruleSet, context, opts.Output)
+	results, errorCount, err := evaluateLintRules(ruleSet, context)
 	if err != nil {
-		return err
+		return reportLintFailure(err, opts.Output)
 	}
 	location.Enrich(results, context.ResolvedDocument)
 
@@ -74,7 +74,7 @@ func RunLint(opts LintOptions) error {
 		tr.SourceFile = opts.OpenRPCFile
 	}
 	if err := reporter.Format(results, len(ruleSet), opts.Output); err != nil {
-		return err
+		return reportLintFailure(err, opts.Output)
 	}
 	if errorCount > 0 {
 		return fmt.Errorf("found %d linting error(s)", errorCount)
@@ -83,30 +83,26 @@ func RunLint(opts LintOptions) error {
 }
 
 // loadLintDocument prepares the shared document and index once per lint run.
-func loadLintDocument(path string, output io.Writer) (types.RuleFunctionContext, error) {
+func loadLintDocument(path string) (types.RuleFunctionContext, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(output, "Error reading OpenRPC file: %v\n", err)
-		return types.RuleFunctionContext{}, err
+		return types.RuleFunctionContext{}, &lintFailure{prefix: "Error reading OpenRPC file: ", cause: err}
 	}
 	var document interface{}
 	if err := json.Unmarshal(data, &document); err != nil {
-		fmt.Fprintf(output, "Error parsing OpenRPC file: %v\n", err)
-		return types.RuleFunctionContext{}, err
+		return types.RuleFunctionContext{}, &lintFailure{prefix: "Error parsing OpenRPC file: ", cause: err}
 	}
-	return prepareLintDocument(document, output)
+	return prepareLintDocument(document)
 }
 
-func prepareLintDocument(document interface{}, output io.Writer) (types.RuleFunctionContext, error) {
+func prepareLintDocument(document interface{}) (types.RuleFunctionContext, error) {
 	resolved, err := resolveRefs(document)
 	if err != nil {
-		fmt.Fprintf(output, "Error resolving $refs in OpenRPC file: %v\n", err)
-		return types.RuleFunctionContext{}, err
+		return types.RuleFunctionContext{}, &lintFailure{prefix: "Error resolving $refs in OpenRPC file: ", cause: err}
 	}
 	meta, err := metaschema.For(document)
 	if err != nil {
-		fmt.Fprintf(output, "Error selecting OpenRPC meta-schema: %v\n", err)
-		return types.RuleFunctionContext{}, err
+		return types.RuleFunctionContext{}, &lintFailure{prefix: "Error selecting OpenRPC meta-schema: ", cause: err}
 	}
 	return types.RuleFunctionContext{
 		Document:         document,
@@ -115,26 +111,24 @@ func prepareLintDocument(document interface{}, output io.Writer) (types.RuleFunc
 	}, nil
 }
 
-func loadLintRules(path string, output io.Writer) (map[string]types.Rule, error) {
+func loadLintRules(path string) (map[string]types.Rule, error) {
 	wrapper, err := rules.LoadRulesFileFromPath(path)
 	if err != nil {
 		return nil, err
 	}
 	if err := wrapper.CheckRules(); err != nil {
-		fmt.Fprintf(output, "Error checking rules file: %v\n", err)
-		return nil, err
+		return nil, &lintFailure{prefix: "Error checking rules file: ", cause: err}
 	}
 	return wrapper.ResolvedRules()
 }
 
-func evaluateLintRules(ruleSet map[string]types.Rule, context types.RuleFunctionContext, output io.Writer) ([]types.RuleFunctionResult, int, error) {
+func evaluateLintRules(ruleSet map[string]types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, int, error) {
 	var allResults []types.RuleFunctionResult
 	errorCount := 0
 	for ruleID, rule := range ruleSet {
 		severity, err := normalizeSeverity(rule.Severity)
 		if err != nil {
-			fmt.Fprintf(output, "Error validating rules file: rule %q %v\n", ruleID, err)
-			return nil, 0, err
+			return nil, 0, &lintFailure{prefix: fmt.Sprintf("Error validating rules file: rule %q ", ruleID), cause: err}
 		}
 		if severity == types.SeverityIgnore {
 			continue

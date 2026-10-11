@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
 )
 
@@ -143,7 +144,8 @@ func TestMethodIndexFromPath(t *testing.T) {
 		{"", -1},
 	}
 	for _, tc := range cases {
-		if got := methodIndexFromPath(tc.path); got != tc.want {
+		position, _ := paths.Parse(tc.path)
+		if got := position.MethodIndex(); got != tc.want {
 			t.Errorf("methodIndexFromPath(%q) = %d, want %d", tc.path, got, tc.want)
 		}
 	}

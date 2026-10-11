@@ -2,8 +2,6 @@ package reporters
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
@@ -144,22 +142,4 @@ func formatSecondaryLabels(labels types.PathLabels, selectedKind groupKind) []st
 		out = append(out, fmt.Sprintf("%s: %q", anchor.kind.label(), anchor.value))
 	}
 	return out
-}
-
-// methodIndexRe extracts the methods[N] index from a normalized JSONPath so
-// method groups can be ordered by document position rather than alphabetically.
-var methodIndexRe = regexp.MustCompile(`\['methods'\]\[(\d+)\]`)
-
-// methodIndexFromPath returns the array index of the first methods[N] segment
-// in a normalized JSONPath, or -1 when no such segment exists.
-func methodIndexFromPath(jsonPath string) int {
-	m := methodIndexRe.FindStringSubmatch(jsonPath)
-	if len(m) < 2 {
-		return -1
-	}
-	idx, err := strconv.Atoi(m[1])
-	if err != nil {
-		return -1
-	}
-	return idx
 }

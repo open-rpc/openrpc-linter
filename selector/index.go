@@ -29,18 +29,22 @@ type Index struct {
 // Build walks doc using meta to classify each object and collect candidates.
 // Assumes $refs are already resolved.
 func Build(doc any, meta *metaschema.MetaSchema) *Index {
-	idx := &Index{
-		ByField: make(map[string][]*Candidate),
-		ByPath:  make(map[string]*Candidate),
-	}
-	b := &builder{meta: meta, idx: idx}
+	byField := make(map[string][]*Candidate)
+	byPath := make(map[string]*Candidate)
+	b := &builder{meta: meta, visit: func(candidate *Candidate) {
+		byPath[candidate.Path.String()] = candidate
+		for field := range candidate.Fields {
+			byField[field] = append(byField[field], candidate)
+		}
+	}}
 	b.walk(doc, meta.Root(), spec.NormalizedPath{})
-	return idx
+	return &Index{ByField: byField, ByPath: byPath}
 }
 
+// builder visits recognized objects. Only Build owns the index lookup tables.
 type builder struct {
-	meta *metaschema.MetaSchema
-	idx  *Index
+	meta  *metaschema.MetaSchema
+	visit func(*Candidate)
 }
 
 // walk recurses over (node, schema) in lockstep. node is the document
@@ -70,10 +74,7 @@ func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath
 
 func (b *builder) indexObject(obj map[string]any, schema map[string]any, path spec.NormalizedPath) {
 	if candidate := objectCandidate(obj, schema, path); candidate != nil {
-		b.idx.ByPath[candidate.Path.String()] = candidate
-		for field := range candidate.Fields {
-			b.idx.ByField[field] = append(b.idx.ByField[field], candidate)
-		}
+		b.visit(candidate)
 	}
 
 	// Recurse into every actual document key whose schema position we can
