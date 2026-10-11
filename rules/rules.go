@@ -48,7 +48,7 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 
 	var allResults []types.RuleFunctionResult
 	for i := range targets {
-		allResults = append(allResults, executeTarget(ruleFunc, &targets[i], context)...)
+		allResults = executeTarget(ruleFunc, &targets[i], context, allResults)
 	}
 
 	return allResults, nil
@@ -56,10 +56,9 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 
 // executeTarget binds one selected node to the shared rule context and
 // normalizes diagnostics before returning them to the rule executor.
-func executeTarget(ruleFunc types.RuleFunction, target *selector.Target, context types.RuleFunctionContext) []types.RuleFunctionResult {
+func executeTarget(ruleFunc types.RuleFunction, target *selector.Target, context types.RuleFunctionContext, results []types.RuleFunctionResult) []types.RuleFunctionResult {
 	context.Path = target.PathString()
 	context.Target = target
-	var results []types.RuleFunctionResult
 	for _, result := range ruleFunc.RunRule(target.Node, context) {
 		if result.Message == "" {
 			continue
