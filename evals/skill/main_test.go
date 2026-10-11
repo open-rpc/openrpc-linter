@@ -132,3 +132,20 @@ func TestEvalExplicitAgentAndSetupFailure(t *testing.T) {
 		t.Fatal("expected temp directory failure")
 	}
 }
+
+func TestDirectoryPreparationFailure(t *testing.T) {
+	root := t.TempDir()
+	evalWrite(t, filepath.Join(root, "workspace"), "file")
+	if _, _, err := prepareDirectories(root); err == nil {
+		t.Fatal("expected workspace directory error")
+	}
+}
+
+func TestEvalRequestsFailureExit(t *testing.T) {
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+	code := 0
+	runMain(func(value int) { code = value })
+	if code != 1 {
+		t.Fatalf("exit code: %d", code)
+	}
+}

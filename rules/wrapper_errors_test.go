@@ -1,6 +1,9 @@
 package rules
 
 import (
+	"embed"
+	"runtime"
+
 	"os"
 	"path/filepath"
 	"reflect"
@@ -60,5 +63,42 @@ func TestExecutorEmptyResultsAndPaths(t *testing.T) {
 	got, err := ExecuteRule(rule, types.RuleFunctionContext{Document: map[string]any{}})
 	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0].Path, []string{"$"}) {
 		t.Fatalf("result fallback: %v %v", got, err)
+	}
+}
+
+func TestMissingEmbeddedRuleExtension(t *testing.T) {
+	original := ruleExtensionsFS
+	ruleExtensionsFS = embed.FS{}
+	t.Cleanup(func() { ruleExtensionsFS = original })
+	if _, err := getExtendedRules([]types.RuleDefaults{types.RuleExtensionRecommended}); err == nil {
+		t.Fatal("expected missing extension error")
+	}
+}
+
+func TestRulesPathAfterWorkspaceRemoval(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit removing the working directory")
+	}
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(original); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRulesFileFromPath("rules.yml"); err == nil {
+		t.Fatal("expected relative path error")
 	}
 }

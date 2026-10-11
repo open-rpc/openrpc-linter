@@ -32,7 +32,11 @@ func newRootCommand() *cobra.Command {
 }
 
 func Execute() {
+	execute(os.Exit)
+}
+
+func execute(exit func(int)) {
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		exit(1)
 	}
 }

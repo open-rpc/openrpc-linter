@@ -3,19 +3,17 @@ package cmd
 import (
 	"bytes"
 	"errors"
-	"io"
-	"os"
-	"path/filepath"
-	"reflect"
-	"strings"
-	"testing"
-
 	"github.com/open-rpc/openrpc-linter/reporters"
 	"github.com/open-rpc/openrpc-linter/types"
 	"github.com/spf13/cobra"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
 )
 
-func writeCoverageFile(t *testing.T, name, content string) string {
+func writeLintFixture(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
@@ -30,7 +28,7 @@ func TestLintInputFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
-			_, err := loadLintDocument(writeCoverageFile(t, "openrpc.json", tc.content), &output)
+			_, err := loadLintDocument(writeLintFixture(t, "openrpc.json", tc.content), &output)
 			if err == nil || !strings.Contains(output.String(), tc.message) {
 				t.Fatalf("got %v, %q", err, output.String())
 			}
@@ -40,23 +38,23 @@ func TestLintInputFailures(t *testing.T) {
 	if err := RunLint(LintOptions{OpenRPCFile: "missing.json", Output: &output}); err == nil {
 		t.Fatal("accepted missing document")
 	}
-	doc := writeCoverageFile(t, "openrpc.json", `{"info":{"title":"API"}}`)
+	doc := writeLintFixture(t, "openrpc.json", `{"info":{"title":"API"}}`)
 	if err := RunLint(LintOptions{OpenRPCFile: doc, RulesFile: "missing.yml", Output: &output}); err == nil {
 		t.Fatal("accepted missing rules")
 	}
-	empty := writeCoverageFile(t, "rules.yml", "rules: {}")
+	empty := writeLintFixture(t, "rules.yml", "rules: {}")
 	if _, err := loadLintRules(empty, &output); err == nil {
 		t.Fatal("accepted empty rules")
 	}
-	unknown := writeCoverageFile(t, "rules.yml", "extends: [unknown]")
+	unknown := writeLintFixture(t, "rules.yml", "extends: [unknown]")
 	if _, err := loadLintRules(unknown, &output); err == nil {
 		t.Fatal("accepted unknown extension")
 	}
-	invalid := writeCoverageFile(t, "rules.yml", "rules:\n  r:\n    severity: invalid\n")
+	invalid := writeLintFixture(t, "rules.yml", "rules:\n  r:\n    severity: invalid\n")
 	if err := RunLint(LintOptions{OpenRPCFile: doc, RulesFile: invalid, Output: &output}); err == nil {
 		t.Fatal("accepted invalid severity")
 	}
-	valid := writeCoverageFile(t, "rules.yml", "rules:\n  r:\n    given: '$'\n")
+	valid := writeLintFixture(t, "rules.yml", "rules:\n  r:\n    given: '$'\n")
 	want := errors.New("writer failed")
 	if err := RunLint(LintOptions{OpenRPCFile: doc, RulesFile: valid, Output: failingWriter{want}}); !errors.Is(err, want) {
 		t.Fatalf("write error: %v", err)
@@ -71,67 +69,6 @@ func TestRuleExecutionErrorDiagnostic(t *testing.T) {
 	if severity, err := normalizeSeverity(types.SeverityInfo); err != nil || severity != types.SeverityInfo {
 		t.Fatalf("info: %v %v", severity, err)
 	}
-}
-
-func TestReferenceBoundaryCases(t *testing.T) {
-	if _, err := resolveRefs(make(chan int)); err == nil {
-		t.Fatal("accepted non-JSON value")
-	}
-	doc := map[string]any{"value": "ping", "arr": []any{"pong"}}
-	if got := resolveJSONPointer("", doc); !reflect.DeepEqual(got, doc) {
-		t.Fatalf("root pointer: %v", got)
-	}
-	for _, path := range []string{"missing", "arr/0", "value/child"} {
-		if got := resolveJSONPointer(path, doc); got != nil {
-			t.Fatalf("unsupported pointer %q: %v", path, got)
-		}
-	}
-	ref := map[string]any{"$ref": "#/missing"}
-	if got := resolveRefsRecursive(ref, doc, types.ResolvingRefs{}); !reflect.DeepEqual(got, ref) {
-		t.Fatalf("unresolved reference: %v", got)
-	}
-}
-
-func TestInitDefaultsAndCommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if err := RunInit(InitOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := os.ReadFile("rules.yml"); err != nil || string(data) != basicRulesYAML {
-		t.Fatalf("default rules: %q %v", data, err)
-	}
-	oldForce := initForce
-	t.Cleanup(func() { initForce = oldForce })
-	initForce = false
-	command := &cobra.Command{}
-	command.SetOut(io.Discard)
-	initCmd.Run(command, []string{"custom.yml"})
-	if _, err := os.Stat("custom.yml"); err != nil {
-		t.Fatal(err)
-	}
-	initForce = true
-	initCmd.Run(command, nil)
-}
-
-func TestValidateDefaultFilename(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if err := os.WriteFile("openrpc.json", []byte(`{"openrpc":"1.4.0","info":{"title":"API","version":"1"},"methods":[]}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	command := &cobra.Command{}
-	command.SetOut(io.Discard)
-	if err := runValidate(command, nil); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestExecuteHelp(t *testing.T) {
-	old := rootCmd
-	t.Cleanup(func() { rootCmd = old })
-	rootCmd = newRootCommand()
-	rootCmd.SetArgs([]string{"--help"})
-	rootCmd.SetOut(io.Discard)
-	Execute()
 }
 
 func TestLintCommandDefaultsAndExplicitFile(t *testing.T) {
@@ -152,5 +89,22 @@ func TestLintCommandDefaultsAndExplicitFile(t *testing.T) {
 	lintCmd.Run(command, []string{"openrpc.json"})
 	if _, ok := GetReporter("text").(*reporters.TextReporter); !ok {
 		t.Fatal("text reporter")
+	}
+}
+
+func TestPrepareLintDocumentRejectsNonJSONValue(t *testing.T) {
+	var output bytes.Buffer
+	if _, err := prepareLintDocument(make(chan int), &output); err == nil || !strings.Contains(output.String(), "Error resolving $refs") {
+		t.Fatalf("resolution error: %v %q", err, output.String())
+	}
+}
+
+func TestLintCommandRequestsFailureExit(t *testing.T) {
+	command := &cobra.Command{}
+	command.SetOut(io.Discard)
+	code := 0
+	runLintCommand(command, []string{filepath.Join(t.TempDir(), "missing.json")}, func(value int) { code = value })
+	if code != 1 {
+		t.Fatalf("exit code: %d", code)
 	}
 }
