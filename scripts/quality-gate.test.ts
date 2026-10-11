@@ -42,12 +42,16 @@ test("CLI rejects failed analysis and hard-limit violations", async () => {
     for (const scenario of [
       { code: 1, diagnostics: [], functions: 164, error: "" },
       { code: 2, diagnostics: [], functions: 164, error: "cyclo check failed" },
-      { code: 1, diagnostics: [{ rule_id: "fn_length" }], functions: 164, error: "200-line function limit exceeded" },
+      { code: 1, diagnostics: [{ rule_id: "fn_length" }], functions: 164, lines: 201, error: "200-line function limit exceeded" },
       { code: 0, diagnostics: [], functions: 0, error: "invalid functions count" },
+      { code: 0, diagnostics: [], functions: 164, lines: 200, error: "" },
+      { code: 0, diagnostics: [], functions: 164, lines: 201, error: "200-line function limit exceeded" },
+      { code: 0, diagnostics: [], functions: 164, lines: -1, error: "invalid Cyclo function length" },
     ]) {
       const report = { schema_version: 1, summary: { functions: scenario.functions }, diagnostics: scenario.diagnostics };
+      const facts = { schema_version: 2, functions: [{ code_lines: scenario.lines ?? 20 }] };
       const executable = join(directory, "cyclo");
-      writeFileSync(executable, `#!/usr/bin/env bun\nconst check = process.argv[2] === "check"; console.log(JSON.stringify(check ? ${JSON.stringify(report)} : {candidates: []})); process.exit(check ? ${scenario.code} : 0);\n`, { mode: 0o755 });
+      writeFileSync(executable, `#!/usr/bin/env bun\nconst check = process.argv[2] === "check"; const facts = process.argv.includes("facts"); console.log(JSON.stringify(check ? (facts ? ${JSON.stringify(facts)} : ${JSON.stringify(report)}) : {candidates: []})); process.exit(check ? (facts && ${scenario.code} === 1 ? 0 : ${scenario.code}) : 0);\n`, { mode: 0o755 });
       const result = Bun.spawnSync([process.execPath, script], { cwd: directory, env: { ...process.env, CYCLO: executable } });
       expect(result.exitCode).toBe(scenario.error ? 1 : 0);
       if (scenario.error) expect(result.stderr.toString()).toContain(scenario.error);

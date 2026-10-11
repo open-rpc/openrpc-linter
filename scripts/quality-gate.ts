@@ -24,7 +24,7 @@ export function validateCounts(counts: Counts): void {
 function scan(command: string[]): any {
   const result = spawnSync([process.env.CYCLO ?? "cyclo", ...command], { stdout: "pipe", stderr: "pipe" });
   // check exits 1 for findings; an analysis failure is never a passing scan.
-  if (result.exitCode !== 0 && !(command[0] === "check" && result.exitCode === 1)) {
+  if (result.exitCode !== 0 && !(command[0] === "check" && command.includes("json") && result.exitCode === 1)) {
     throw new Error(`cyclo ${command[0]} failed: ${result.stderr.toString()}`);
   }
   return JSON.parse(result.stdout.toString());
@@ -37,13 +37,23 @@ async function main(): Promise<void> {
     throw new Error("invalid baseline version or Cyclo revision");
   }
   validateCounts(baseline);
+  // Facts retain physical function lengths even when diagnostics are suppressed.
+  const facts = scan(["check", "--format", "facts", "."]);
+  if (facts.schema_version !== 2 || !Array.isArray(facts.functions)) {
+    throw new Error("invalid Cyclo facts");
+  }
+  for (const fn of facts.functions) {
+    if (!Number.isSafeInteger(fn.code_lines) || fn.code_lines < 0) {
+      throw new Error("invalid Cyclo function length");
+    }
+    if (fn.code_lines > 200) {
+      throw new Error("200-line function limit exceeded");
+    }
+  }
   const quality = scan(["check", "--format", "json", "."]);
   const patterns = scan(["patterns", "--format", "json", "."]);
   if (quality.schema_version !== 1 || !Array.isArray(quality.diagnostics) || !Array.isArray(patterns.candidates)) {
     throw new Error("invalid Cyclo report");
-  }
-  if (quality.diagnostics.some((finding: { rule_id: string }) => finding.rule_id === "fn_length")) {
-    throw new Error("200-line function limit exceeded");
   }
   const current = {
     functions: quality.summary?.functions,

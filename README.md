@@ -230,5 +230,6 @@ lower rates pass. This aggregate gate allows one finding to replace another.
 After a reviewed improvement, run `make quality-baseline` to lower the baseline
 and commit the updated file. CI checks the baseline without changing it. Keep
 the Cyclo revision pinned; tool upgrades require a reviewed baseline update.
-Functions must also stay within 200 code lines, and CI rejects any uncovered
-Go statements independently of these rates.
+Production functions must also stay within 200 code lines. This cap checks raw
+Cyclo facts, so suppressing a diagnostic cannot bypass it. CI rejects any
+uncovered Go statements independently of these rates.
