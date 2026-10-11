@@ -2,6 +2,7 @@ package functions
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/open-rpc/openrpc-linter/selector"
 	"github.com/open-rpc/openrpc-linter/types"
@@ -18,7 +19,13 @@ type UniqueRule struct {
 type uniqueScope struct {
 	paths []spec.NormalizedPath
 	err   error
-	seen  map[string]map[primitiveKey]string
+	seen  map[scopedValue]string
+}
+
+// scopedValue makes scope and primitive identity one collision-safe map key.
+type scopedValue struct {
+	scope string
+	value primitiveKey
 }
 
 func NewUniqueRule() *UniqueRule {
@@ -32,8 +39,12 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	}
 
 	path := t.PathString()
-	if err := r.ensureScopes(context); err != nil {
-		return ruleFailure("unique scope option invalid: "+err.Error(), path)
+	if r.scope == nil {
+		paths, err := uniqueScopePaths(context)
+		r.scope = &uniqueScope{paths: paths, err: err}
+	}
+	if r.scope.err != nil {
+		return ruleFailure("unique scope option invalid: "+r.scope.err.Error(), path)
 	}
 
 	scopeKey, inScope := r.scope.keyFor(t)
@@ -62,10 +73,7 @@ func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey
 		return primitiveKey{}, false, err
 	}
 	if missingField(context.Target) {
-		if ignoreMissing {
-			return primitiveKey{}, false, nil
-		}
-		value = nil
+		return primitiveKey{kind: primitiveNull}, !ignoreMissing, nil
 	}
 	key, supported := comparableKey(value)
 	if !supported {
@@ -77,17 +85,13 @@ func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey
 // remember owns the per-scope first-seen state. It never replaces a first path.
 func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (string, bool) {
 	if s.seen == nil {
-		s.seen = map[string]map[primitiveKey]string{}
+		s.seen = make(map[scopedValue]string)
 	}
-	bucket, exists := s.seen[scopeKey]
-	if !exists {
-		bucket = map[primitiveKey]string{}
-		s.seen[scopeKey] = bucket
-	}
-	if firstPath, duplicate := bucket[key]; duplicate {
+	identity := scopedValue{scope: scopeKey, value: key}
+	if firstPath, duplicate := s.seen[identity]; duplicate {
 		return firstPath, true
 	}
-	bucket[key] = path
+	s.seen[identity] = path
 	return "", false
 }
 
@@ -103,15 +107,6 @@ func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
 	}
 
 	return value, nil
-}
-
-func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
-	if r.scope != nil {
-		return r.scope.err
-	}
-	paths, err := uniqueScopePaths(ctx)
-	r.scope = &uniqueScope{paths: paths, err: err}
-	return err
 }
 
 func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, error) {
@@ -131,6 +126,8 @@ func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, err
 	for _, node := range p.SelectLocated(doc) {
 		paths = append(paths, node.Path)
 	}
+	// Most-specific scopes come first. Selection order breaks equal-depth ties.
+	sort.SliceStable(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
 	return paths, nil
 }
 
@@ -138,14 +135,10 @@ func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
 	if len(s.paths) == 0 {
 		return globalScopeKey, true
 	}
-	bestIdx, bestLen := -1, -1
-	for i, sp := range s.paths {
-		if selector.IsUnder(t.Path, sp) && len(sp) > bestLen {
-			bestIdx, bestLen = i, len(sp)
+	for _, path := range s.paths {
+		if selector.IsUnder(t.Path, path) {
+			return path.String(), true
 		}
 	}
-	if bestIdx < 0 {
-		return "", false
-	}
-	return s.paths[bestIdx].String(), true
+	return "", false
 }

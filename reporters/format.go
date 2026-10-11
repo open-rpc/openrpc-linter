@@ -2,6 +2,7 @@ package reporters
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
@@ -40,15 +41,20 @@ func severityLabel(severity types.Severity) string {
 	}
 }
 
-// truncate shortens s to at most max bytes, appending "…" when clipped.
+// truncate preserves UTF-8 and reserves the byte width of the ellipsis.
+// Limits smaller than the ellipsis itself still show the complete ellipsis.
 func truncate(s string, max int) string {
 	if max <= 0 || len(s) <= max {
 		return s
 	}
-	if max == 1 {
+	limit := max - len("…")
+	if limit < 0 {
 		return "…"
 	}
-	return s[:max-1] + "…"
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit] + "…"
 }
 
 // colWidth returns min(max, widest cell) for batch column padding.

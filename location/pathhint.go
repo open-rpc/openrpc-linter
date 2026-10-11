@@ -8,30 +8,26 @@ import (
 	"github.com/theory/jsonpath/spec"
 )
 
-type pathSegment struct {
-	key   string
-	index int
-	isIdx bool
-}
-
 // Resolve derives PathLabels by walking doc along the normalized JSONPath.
 func Resolve(doc any, path string) types.PathLabels {
-	segments := parseJSONPath(path)
+	position, _ := paths.Parse(path)
+	segments := position.Selectors()
 	var labels types.PathLabels
 	current := doc
 	for i, segment := range segments {
 		previousKey := ""
-		if i > 0 && !segments[i-1].isIdx {
-			previousKey = segments[i-1].key
+		if i > 0 {
+			name, _ := segments[i-1].(spec.Name)
+			previousKey = string(name)
 		}
-		next, present, valid := segment.selectNode(current)
+		next, present, valid := selectNode(segment, current)
 		if !valid {
 			return types.PathLabels{}
 		}
-		if segment.isIdx {
-			labels = labelsAtIndex(labels, previousKey, next)
+		if name, named := segment.(spec.Name); named {
+			labels = labelsAtKey(labels, string(name), previousKey, next)
 		} else {
-			labels = labelsAtKey(labels, segment.key, previousKey, next)
+			labels = labelsAtIndex(labels, previousKey, next)
 		}
 		if !present {
 			return labels
@@ -43,19 +39,19 @@ func Resolve(doc any, path string) types.PathLabels {
 
 // selectNode distinguishes an absent object field from an invalid traversal.
 // Absent fields retain the labels collected so far; invalid traversal clears them.
-func (s pathSegment) selectNode(current any) (node any, present, valid bool) {
-	if s.isIdx {
+func selectNode(selector spec.NormalSelector, current any) (node any, present, valid bool) {
+	if index, indexed := selector.(spec.Index); indexed {
 		array, ok := current.([]any)
-		if !ok || s.index < 0 || s.index >= len(array) {
+		if !ok || int(index) < 0 || int(index) >= len(array) {
 			return nil, false, false
 		}
-		return array[s.index], true, true
+		return array[int(index)], true, true
 	}
 	object, ok := current.(map[string]any)
 	if !ok {
 		return nil, false, false
 	}
-	node, present = object[s.key]
+	node, present = object[string(selector.(spec.Name))]
 	return node, present, true
 }
 
@@ -120,27 +116,6 @@ func Enrich(results []types.RuleFunctionResult, doc any) {
 func FriendlyPath(jsonPath string) string {
 	path, _ := paths.Parse(jsonPath)
 	return path.Friendly()
-}
-
-func parseJSONPath(path string) []pathSegment {
-	location, valid := paths.Parse(path)
-	if !valid {
-		return nil
-	}
-	selectors := location.Selectors()
-	segments := make([]pathSegment, len(selectors))
-	for i, selector := range selectors {
-		segments[i] = segmentFromSelector(selector)
-	}
-	return segments
-}
-
-func segmentFromSelector(selector spec.NormalSelector) pathSegment {
-	if index, ok := selector.(spec.Index); ok {
-		return pathSegment{index: int(index), isIdx: true}
-	}
-	name, _ := selector.(spec.Name)
-	return pathSegment{key: string(name)}
 }
 
 func stringField(node any, field string) (string, bool) {

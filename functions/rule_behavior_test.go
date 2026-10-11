@@ -159,3 +159,32 @@ func TestSchemaRemovedWorkspace(t *testing.T) {
 		t.Fatal("expected relative resource error")
 	}
 }
+
+func TestUniqueNestedScopesKeepSeparateFirstOccurrences(t *testing.T) {
+	document := map[string]any{"nodes": []any{map[string]any{
+		"name": "same", "other": "same",
+		"nodes": []any{map[string]any{"name": "same", "other": "same"}},
+	}}}
+	parent := spec.NormalizedPath{spec.Name("nodes"), spec.Index(0)}
+	child := spec.NormalizedPath{spec.Name("nodes"), spec.Index(0), spec.Name("nodes"), spec.Index(0)}
+	rule := NewUniqueRule()
+	context := types.RuleFunctionContext{Document: document, Rule: &types.Rule{Then: &types.RuleAction{FunctionOptions: map[string]any{"scope": "$..nodes[*]"}}}}
+	for _, tc := range []struct {
+		parent    spec.NormalizedPath
+		field     string
+		duplicate bool
+	}{
+		{parent, "name", false}, {child, "name", false}, {child, "other", true}, {parent, "other", true},
+	} {
+		path := append(append(spec.NormalizedPath{}, tc.parent...), spec.Name(tc.field))
+		target := valueTargetAt("same", path)
+		context.Target = &target
+		got := rule.RunRule("same", context)
+		if (len(got) > 0) != tc.duplicate {
+			t.Fatalf("%s: unexpected diagnostics %+v", path, got)
+		}
+		if tc.duplicate && !strings.Contains(got[0].Message, tc.parent.String()+"['name']") {
+			t.Fatalf("%s: wrong first occurrence %+v", path, got)
+		}
+	}
+}

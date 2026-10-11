@@ -19,8 +19,14 @@ func TestTruncate(t *testing.T) {
 		{"empty", "", 10, ""},
 		{"exact fit", "hello", 5, "hello"},
 		{"under limit", "hi", 10, "hi"},
-		{"over limit", "hello world", 8, "hello w…"},
+		{"over limit", "hello world", 8, "hello…"},
 		{"max one", "hello", 1, "…"},
+		{"max two", "hello", 2, "…"},
+		{"ellipsis only", "hello", 3, "…"},
+		{"whole accented character", "café monde", 8, "café…"},
+		{"split accented character", "café monde", 7, "caf…"},
+		{"split emoji", "a🐟b", 5, "a…"},
+		{"leading emoji", "🐟abc", 4, "…"},
 		{"max zero passthrough", "hello", 0, "hello"},
 	}
 	for _, tc := range cases {
