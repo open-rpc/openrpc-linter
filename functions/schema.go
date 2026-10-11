@@ -13,7 +13,6 @@ type SchemaRule struct {
 	cache map[*types.RuleAction]*jsonschema.Schema
 }
 
-//lint:ignore chop, thin_slice Missing fields skip schema validation; option and conformance errors preserve distinct ordered diagnostics.
 func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
 	// Same reasoning as UniqueRule: a missing-field Target has nothing for
 	// schema validation to chew on. Skip and let truthy report absence.

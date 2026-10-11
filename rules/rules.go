@@ -22,8 +22,6 @@ import (
 //
 // Every function — truthy, unique, schema, future ones — sees the same
 // Target shape, so there is no per-function special-casing here.
-//
-//lint:ignore chop One rule owns a function instance, parsed path, and target stream; state cannot be shared between rule executions.
 func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, error) {
 	if rule.Then == nil {
 		return []types.RuleFunctionResult{}, nil
@@ -58,7 +56,6 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 
 // executeTarget binds one selected node to the shared rule context and
 // normalizes diagnostics before returning them to the rule executor.
-// cyclo-allow(aggregate): Context and diagnostic values are transient DTOs, not independently identified domain aggregates.
 func executeTarget(ruleFunc types.RuleFunction, target *selector.Target, context types.RuleFunctionContext, results []types.RuleFunctionResult) []types.RuleFunctionResult {
 	context.Path = target.PathString()
 	context.Target = target

@@ -12,7 +12,6 @@ func builtinFunctions() map[string]func() types.RuleFunction {
 	}
 }
 
-// cyclo-allow(side_effect_density): This explicit registration operation installs the three built-in factories in the public registry.
 func RegisterFunctions() {
 	for name, factory := range builtinFunctions() {
 		FunctionRegistry[name] = factory

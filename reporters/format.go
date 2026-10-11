@@ -77,8 +77,6 @@ func formatColumnHeaderRow(pathW int) string {
 
 // resolveGroup picks the most specific anchor on labels and returns a
 // (kind, name) pair. The kind drives both header rendering and group order.
-//
-//lint:ignore chop One ordered display policy selects method, component anchor, section, then general.
 func resolveGroup(labels types.PathLabels) (string, string) {
 	if labels.Method != "" {
 		return groupKindMethod, labels.Method

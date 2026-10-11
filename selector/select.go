@@ -22,7 +22,6 @@ import (
 // The function is intentionally recursive: compound descendants like
 // $..foo.bar fall out as "do the descendant step, then for each result
 // evaluate the remaining segments as a fresh query". No phase pipeline.
-// cyclo-allow(side_effect_density): Read query segments and delegate to recursive selection; JSONPath reads do not write the input document.
 func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 	if p == nil {
 		return nil
@@ -34,9 +33,6 @@ func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 // selectSegments evaluates segments against current.
 // basePath is the canonical path of current within root (empty for the
 // initial call). idx is the precomputed schema-aware Index.
-// cyclo-allow(side_effect_density): Recursive selection reads JSONPath state and an existing index; its output targets are owned values.
-//
-//lint:ignore barrier_slice, chop, thin_slice Recursive selection reads JSONPath state and an existing index; its output targets are owned values.
 func selectSegments(
 	segments []*spec.Segment,
 	current any,
@@ -77,9 +73,6 @@ func lastDescendantIndex(segments []*spec.Segment) int {
 }
 
 // childTargets reports missing named fields and otherwise uses value mode.
-// cyclo-allow(side_effect_density): Select parent nodes and construct output targets; JSONPath traversal reads the input document.
-//
-//lint:ignore chop, thin_slice Select parent nodes and construct output targets; JSONPath traversal reads the input document.
 func childTargets(segments []*spec.Segment, current any, idx *Index) []Target {
 	field, ok := terminalName(segments[len(segments)-1])
 	if !ok {
@@ -96,7 +89,6 @@ func childTargets(segments []*spec.Segment, current any, idx *Index) []Target {
 
 // compoundTargets evaluates the remaining query beneath each existing
 // intermediate node, then restores its document-relative paths.
-// cyclo-allow(side_effect_density): Evaluate each suffix beneath an intermediate node and copy paths into document-relative output targets.
 func compoundTargets(intermediates []Target, suffix []*spec.Segment, idx *Index) []Target {
 	out := make([]Target, 0, len(intermediates))
 	for _, intermediate := range intermediates {

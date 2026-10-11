@@ -19,9 +19,6 @@ type pathSegment struct {
 }
 
 // Resolve derives PathLabels by walking doc along the normalized JSONPath.
-// cyclo-allow(mutated_targets, mutation_per_target): One traversal builds a local label value and cursor; no caller-owned document is written.
-//
-//lint:ignore chop One traversal builds a local label value and cursor; no caller-owned document is written.
 func Resolve(doc any, path string) types.PathLabels {
 	segs := parseJSONPath(path)
 	if len(segs) == 0 {
@@ -106,7 +103,6 @@ func Resolve(doc any, path string) types.PathLabels {
 }
 
 // Enrich fills PathLabels on each result from the resolved document.
-// cyclo-allow(side_effect_density): This operation intentionally fills labels on the caller-supplied result slice.
 func Enrich(results []types.RuleFunctionResult, doc any) {
 	for i := range results {
 		if len(results[i].Path) == 0 {
@@ -144,7 +140,6 @@ func FriendlyPath(jsonPath string) string {
 	return string(out)
 }
 
-//lint:ignore thin_slice Parse key and index segments into one ordered path, preserving the existing index overflow behavior.
 func parseJSONPath(path string) []pathSegment {
 	s := strings.TrimPrefix(path, "$")
 
@@ -162,7 +157,6 @@ func parseJSONPath(path string) []pathSegment {
 	return out
 }
 
-//lint:ignore thin_slice One safe lookup requires an object, a present field, and a non-empty string.
 func stringField(node any, field string) (string, bool) {
 	m, ok := node.(map[string]any)
 	if !ok {

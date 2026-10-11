@@ -10,8 +10,6 @@ type TruthyRule struct{}
 // target is — value mode (Field == "") or field mode (Field != "") — so
 // truthy only has to answer "is this present and truthy?" and emit the
 // right diagnostic. No JSONPath introspection lives here anymore.
-//
-//lint:ignore barrier_slice, chop, thin_slice Missing-field and falsy-value diagnostics use one selected target and fallback path.
 func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
 	path := context.Path
 	t := context.Target

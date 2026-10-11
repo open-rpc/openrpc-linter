@@ -43,9 +43,6 @@ func severityColorCode(severity types.Severity) string {
 // supportsColor decides whether to emit ANSI codes for w. It follows the
 // no-color.org and bixense CLICOLOR conventions, plus a TTY check. Order
 // matters: explicit opt-out wins, then explicit opt-in, then heuristics.
-// cyclo-allow(side_effect_density): Color detection intentionally reads environment overrides and terminal file metadata.
-//
-//lint:ignore thin_slice Color detection intentionally reads environment overrides and terminal file metadata.
 func supportsColor(w io.Writer) bool {
 	// Per https://no-color.org/: presence and non-empty value disables color.
 	// Empty string is treated as "not set" so tests can clear it with t.Setenv.
@@ -80,8 +77,6 @@ func formatSeverityCol(severity types.Severity, colorEnabled bool) string {
 // wraps the visible text (not the trailing pad) with the given ANSI code.
 // Passing an empty code or enabled=false yields the plain padded cell so
 // column alignment is preserved regardless of color state.
-//
-//lint:ignore thin_slice One cell combines visible text, non-negative padding, and optional ANSI wrappers.
 func styledCell(s string, width int, code string, enabled bool) string {
 	pad := width - len(s)
 	if pad < 0 {

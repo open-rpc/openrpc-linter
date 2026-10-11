@@ -28,7 +28,6 @@ type Index struct {
 
 // Build walks doc using meta to classify each object and collect candidates.
 // Assumes $refs are already resolved.
-// cyclo-allow(side_effect_density): Build an owned index using the selected meta-schema; cross-package reads and recursive calls are conservative.
 func Build(doc any, meta *metaschema.MetaSchema) *Index {
 	idx := &Index{
 		ByField: make(map[string][]*Candidate),
@@ -46,7 +45,6 @@ type builder struct {
 
 // walk recurses over (node, schema) in lockstep. node is the document
 // value; schema is the meta-schema fragment that describes it.
-// cyclo-allow(side_effect_density): Recursive schema-guided traversal registers candidates in the builder-owned index.
 func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath) {
 	if schema == nil {
 		return
@@ -70,7 +68,6 @@ func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath
 	}
 }
 
-// cyclo-allow(side_effect_density): Register an object candidate in the builder-owned index, then traverse recognized children.
 func (b *builder) indexObject(obj map[string]any, schema map[string]any, path spec.NormalizedPath) {
 	if candidate := objectCandidate(obj, schema, path); candidate != nil {
 		b.idx.ByPath[candidate.Path.String()] = candidate
@@ -94,8 +91,6 @@ func (b *builder) indexObject(obj map[string]any, schema map[string]any, path sp
 
 // objectCandidate constructs the field description for a recognized object.
 // A schema with no named properties contributes no candidate.
-//
-//lint:ignore thin_slice One candidate packages object path, schema title, and declared fields without changing the document.
 func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
 	properties := schemaValue[map[string]any](schema["properties"])
 	if len(properties) == 0 {
@@ -113,7 +108,6 @@ func objectCandidate(obj map[string]any, schema map[string]any, path spec.Normal
 	}
 }
 
-// cyclo-allow(side_effect_density): Traverse array children with their schema; recursive call summaries refer to the builder-owned index.
 func (b *builder) indexArray(arr []any, schema map[string]any, path spec.NormalizedPath) {
 	itemSchema := schemaValue[map[string]any](schema["items"])
 	if itemSchema == nil {
@@ -128,8 +122,6 @@ func (b *builder) indexArray(arr []any, schema map[string]any, path spec.Normali
 // properties wins; patternProperties is consulted next; additionalProperties
 // is consulted last. Returns nil for keys the schema doesn't know about
 // (which is normal for "x-" extensions when additionalProperties is false).
-//
-//lint:ignore chop, thin_slice Schema lookup must prefer direct properties, then pattern properties, then additional properties.
 func (b *builder) schemaForKey(schema map[string]any, key string) map[string]any {
 	if props := schemaValue[map[string]any](schema["properties"]); props != nil {
 		if direct, ok := props[key]; ok {
@@ -164,8 +156,6 @@ func (b *builder) deref(schema map[string]any) map[string]any {
 
 // chooseOneOf picks the concrete branch from a v1.4-style oneOf. Every
 // oneOf in the meta-schema is [concreteOpenRPCType, referenceObject];
-//
-//lint:ignore thin_slice Select the first concrete OpenRPC branch, excluding unresolved and reference-object branches.
 func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 	raw, ok := schema["oneOf"].([]any)
 	if !ok {

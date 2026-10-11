@@ -40,7 +40,6 @@ func GetReporter(format string) reporters.Reporter {
 	}
 }
 
-//lint:ignore chop Normalize and validate one severity enum while preserving accepted names and error text.
 func normalizeSeverity(severity types.Severity) (types.Severity, error) {
 	if severity == "" {
 		return types.SeverityError, nil
@@ -60,9 +59,6 @@ func normalizeSeverity(severity types.Severity) (types.Severity, error) {
 	}
 }
 
-// cyclo-allow(side_effect_density): This application boundary loads inputs, runs registered rules, enriches results, and writes the selected report.
-//
-//lint:ignore chop, thin_slice This application boundary loads inputs, runs registered rules, enriches results, and writes the selected report.
 func RunLint(opts LintOptions) error {
 	context, err := loadLintDocument(opts.OpenRPCFile, opts.Output)
 	if err != nil {
@@ -92,9 +88,6 @@ func RunLint(opts LintOptions) error {
 }
 
 // loadLintDocument prepares the shared document and index once per lint run.
-// cyclo-allow(side_effect_density): Read and decode the input once, reporting errors through the supplied command output.
-//
-//lint:ignore parameterize File reading and JSON decoding have different typed input contracts from resolved-document and schema preparation.
 func loadLintDocument(path string, output io.Writer) (types.RuleFunctionContext, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -109,9 +102,6 @@ func loadLintDocument(path string, output io.Writer) (types.RuleFunctionContext,
 	return prepareLintDocument(document, output)
 }
 
-// cyclo-allow(side_effect_density): Build one resolved document and schema index; cross-package preparation calls are deliberate.
-//
-//lint:ignore parameterize In-memory resolution and schema preparation have different input contracts from file loading; shared guards do not unify them.
 func prepareLintDocument(document interface{}, output io.Writer) (types.RuleFunctionContext, error) {
 	resolved, err := resolveRefs(document)
 	if err != nil {
@@ -130,7 +120,6 @@ func prepareLintDocument(document interface{}, output io.Writer) (types.RuleFunc
 	}, nil
 }
 
-// cyclo-allow(side_effect_density): Load configured rules and report invalid input at the application boundary.
 func loadLintRules(path string, output io.Writer) (map[string]types.Rule, error) {
 	wrapper, err := rules.LoadRulesFileFromPath(path)
 	if err != nil {
@@ -163,7 +152,6 @@ func evaluateLintRules(ruleSet map[string]types.Rule, context types.RuleFunction
 	return allResults, errorCount, nil
 }
 
-//lint:ignore thin_slice Bind one rule and normalize diagnostic IDs and severity before counting its errors.
 func evaluateLintRule(ruleID string, rule types.Rule, context types.RuleFunctionContext) ([]types.RuleFunctionResult, int) {
 	context.Rule = &rule
 	context.RuleID = ruleID
@@ -198,9 +186,6 @@ var lintCmd = &cobra.Command{
 	},
 }
 
-// cyclo-allow(side_effect_density): This Cobra adapter reads CLI options, invokes linting, and requests the process exit on failure.
-//
-//lint:ignore parameterize Document linting has LintOptions and its own IO contract; the Cobra adapter preserves the existing exit behavior.
 func runLintCommand(cmd *cobra.Command, args []string, exit func(int)) {
 	openrpcFile := "openrpc.json"
 	if len(args) > 0 {
@@ -219,7 +204,6 @@ func runLintCommand(cmd *cobra.Command, args []string, exit func(int)) {
 	}
 }
 
-// cyclo-allow(side_effect_density): Register lint flags and the subcommand once during package initialization.
 func init() {
 	lintCmd.Flags().StringVarP(&rulesFile, "rules", "r", "", "Path to rules YAML file")
 	lintCmd.Flags().StringVarP(&outputFormat, "format", "f", "text", "Output format (text, json)")
@@ -227,9 +211,6 @@ func init() {
 }
 
 // resolveRefs resolves all $ref references in the document
-// cyclo-allow(side_effect_density): JSON round-trip cloning handles unsupported input with explicit errors; encoding is the document boundary.
-//
-//lint:ignore parameterize JSON cloning wraps marshal errors and returns document values; its contract differs from schema-family fallback.
 func resolveRefs(document interface{}) (interface{}, error) {
 	// For now, we'll implement a basic $ref resolver that handles internal references
 	// This is a simplified implementation that can be enhanced later
@@ -242,7 +223,6 @@ func resolveRefs(document interface{}) (interface{}, error) {
 	return resolveRefsJSON(docBytes, document)
 }
 
-// cyclo-allow(side_effect_density): Decode an owned document copy before reference traversal; decoder and recursive calls are intentional.
 func resolveRefsJSON(docBytes []byte, document interface{}) (interface{}, error) {
 	var resolved interface{}
 	err := json.Unmarshal(docBytes, &resolved)
@@ -257,7 +237,6 @@ func resolveRefsJSON(docBytes []byte, document interface{}) (interface{}, error)
 }
 
 // resolveRefsRecursive recursively resolves $ref references in the document
-// cyclo-allow(side_effect_density): Traverse owned output containers and the active reference set; recursive call summaries remain conservative.
 func resolveRefsRecursive(current interface{}, root interface{}, resolving types.ResolvingRefs) interface{} {
 	switch v := current.(type) {
 	case map[string]interface{}:
@@ -288,9 +267,6 @@ func resolveRefsRecursive(current interface{}, root interface{}, resolving types
 
 // resolveReference follows a local reference while tracking the active chain.
 // Unresolved and circular references retain their original object.
-// cyclo-allow(side_effect_density): The active-chain set records entry and exit for cycle detection; recursive resolution requires both writes.
-//
-//lint:ignore chop, thin_slice The active-chain set records entry and exit for cycle detection; recursive resolution requires both writes.
 func resolveReference(node map[string]interface{}, root interface{}, resolving types.ResolvingRefs) interface{} {
 	ref, ok := node["$ref"].(string)
 	if !ok || !strings.HasPrefix(ref, "#/") || resolving[ref] {

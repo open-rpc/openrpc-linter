@@ -17,9 +17,6 @@ var validateCmd = &cobra.Command{
 	RunE:  runValidate,
 }
 
-// cyclo-allow(side_effect_density): Read, validate, and report the supplied document at the CLI boundary.
-//
-//lint:ignore thin_slice Read, validate, and report the supplied document at the CLI boundary.
 func runValidate(cmd *cobra.Command, args []string) error {
 	filename := "openrpc.json"
 	if len(args) > 0 {

@@ -23,7 +23,6 @@ func (rw *RulesWrapper) CheckRules() error {
 	return nil
 }
 
-// cyclo-allow(side_effect_density): Load extensions and return a merged rule set; inherited loader effects belong to this input boundary.
 func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
 	merged, err := getExtendedRules(rw.Extends)
 	if err != nil {
@@ -33,7 +32,6 @@ func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
 	return mergeRules(merged, rw.Rules), nil
 }
 
-//lint:ignore barrier_slice, chop, thin_slice Each optional override contributes to one rule value without changing the base; shared references retain their contract.
 func mergeRule(base types.Rule, override types.Rule) types.Rule {
 	return types.Rule{
 		Description: preferOverride(base.Description, override.Description, override.Description != ""),
@@ -65,9 +63,6 @@ func mergeRules(base map[string]types.Rule, overrides map[string]types.Rule) map
 	return merged
 }
 
-// cyclo-allow(side_effect_density): Read only the requested bundled extension and build a local combined map.
-//
-//lint:ignore thin_slice Read only the requested bundled extension and build a local combined map.
 func getExtendedRules(exts []types.RuleDefaults) (map[string]types.Rule, error) {
 	out := make(map[string]types.Rule)
 	for _, ext := range exts {
@@ -85,7 +80,6 @@ func getExtendedRules(exts []types.RuleDefaults) (map[string]types.Rule, error) 
 	return out, nil
 }
 
-// cyclo-allow(side_effect_density): Read and decode a rules resource, reporting input errors through the existing stderr contract.
 func LoadRulesFile(fsys fs.FS, filename string) (*RulesWrapper, error) {
 	b, err := fs.ReadFile(fsys, filename)
 	if err != nil {
@@ -101,7 +95,6 @@ func LoadRulesFile(fsys fs.FS, filename string) (*RulesWrapper, error) {
 	return &rw, nil
 }
 
-// cyclo-allow(side_effect_density): Resolve a filesystem path and load its rules resource at the input boundary.
 func LoadRulesFileFromPath(path string) (*RulesWrapper, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

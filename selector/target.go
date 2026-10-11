@@ -40,8 +40,6 @@ func IsUnder(child, scope spec.NormalizedPath) bool {
 }
 
 // fieldTarget builds a Target for a named field on a parent map.
-//
-//lint:ignore thin_slice One field target keeps its copied path, parent, presence, node, and schema title consistent.
 func fieldTarget(parent any, parentPath spec.NormalizedPath, field string, schemaTitle string) Target {
 	value, exists := mapField(parent, field)
 	childPath := append(append(spec.NormalizedPath{}, parentPath...), spec.Name(field))
