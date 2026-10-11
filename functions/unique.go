@@ -26,6 +26,9 @@ func NewUniqueRule() *UniqueRule {
 	return &UniqueRule{seen: map[string]map[string]string{}}
 }
 
+// cyclo-allow(side_effect_density): Uniqueness is stateful per rule execution; scope selection and first-seen tracking are intentional effects.
+//
+//lint:ignore chop, thin_slice Uniqueness is stateful per rule execution; scope selection and first-seen tracking are intentional effects.
 func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
 	t := context.Target
 	if t == nil {
@@ -94,6 +97,7 @@ func (r *UniqueRule) remember(scopeKey, key, path string) (string, bool) {
 	return "", false
 }
 
+//lint:ignore chop, thin_slice One optional boolean policy defaults absence to true and reports malformed present values.
 func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
 	if ctx.Rule == nil || ctx.Rule.Then == nil {
 		return true, nil
@@ -112,6 +116,7 @@ func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
 	return value, nil
 }
 
+// cyclo-allow(side_effect_density): Cache one scope result, including its error, before evaluating later targets from the same rule.
 func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
 	if r.scope != nil {
 		return r.scope.err
@@ -121,6 +126,7 @@ func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
 	return err
 }
 
+//lint:ignore chop, thin_slice Parse one optional scope and select its paths from the resolved document when available.
 func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, error) {
 	if ctx.Rule == nil || ctx.Rule.Then == nil {
 		return nil, nil
@@ -144,6 +150,7 @@ func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, err
 	return paths, nil
 }
 
+//lint:ignore thin_slice Select the longest matching scope prefix; targets outside every scope retain their distinct outcome.
 func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
 	if len(r.scope.paths) == 0 {
 		return globalScopeKey, true
@@ -160,6 +167,7 @@ func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
 	return r.scope.paths[bestIdx].String(), true
 }
 
+//lint:ignore chop One primitive produces both its type-tagged comparison key and display text; composite values remain excluded.
 func comparableKey(value interface{}) (key string, displayValue string, supported bool) {
 	switch v := value.(type) {
 	case nil:
@@ -167,12 +175,11 @@ func comparableKey(value interface{}) (key string, displayValue string, supporte
 	case string:
 		return "string:" + v, strconv.Quote(v), true
 	case bool:
-		if v {
-			return "bool:true", "true", true
-		}
-		return "bool:false", "false", true
+		display := strconv.FormatBool(v)
+		return "bool:" + display, display, true
 	case float64:
-		return fmt.Sprintf("number:%g", v), fmt.Sprintf("%g", v), true
+		display := strconv.FormatFloat(v, 'g', -1, 64)
+		return "number:" + display, display, true
 	default:
 		return "", "", false
 	}

@@ -28,6 +28,7 @@ type Index struct {
 
 // Build walks doc using meta to classify each object and collect candidates.
 // Assumes $refs are already resolved.
+// cyclo-allow(side_effect_density): Build an owned index using the selected meta-schema; cross-package reads and recursive calls are conservative.
 func Build(doc any, meta *metaschema.MetaSchema) *Index {
 	idx := &Index{
 		ByField: make(map[string][]*Candidate),
@@ -45,6 +46,7 @@ type builder struct {
 
 // walk recurses over (node, schema) in lockstep. node is the document
 // value; schema is the meta-schema fragment that describes it.
+// cyclo-allow(side_effect_density): Recursive schema-guided traversal registers candidates in the builder-owned index.
 func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath) {
 	if schema == nil {
 		return
@@ -68,6 +70,7 @@ func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath
 	}
 }
 
+// cyclo-allow(side_effect_density): Register an object candidate in the builder-owned index, then traverse recognized children.
 func (b *builder) indexObject(obj map[string]any, schema map[string]any, path spec.NormalizedPath) {
 	if candidate := objectCandidate(obj, schema, path); candidate != nil {
 		b.idx.ByPath[candidate.Path.String()] = candidate
@@ -91,8 +94,10 @@ func (b *builder) indexObject(obj map[string]any, schema map[string]any, path sp
 
 // objectCandidate constructs the field description for a recognized object.
 // A schema with no named properties contributes no candidate.
+//
+//lint:ignore thin_slice One candidate packages object path, schema title, and declared fields without changing the document.
 func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
-	properties := mapOf(schema["properties"])
+	properties := schemaValue[map[string]any](schema["properties"])
 	if len(properties) == 0 {
 		return nil
 	}
@@ -103,13 +108,14 @@ func objectCandidate(obj map[string]any, schema map[string]any, path spec.Normal
 	return &Candidate{
 		Path:        append(spec.NormalizedPath{}, path...),
 		Node:        obj,
-		SchemaTitle: stringOf(schema["title"]),
+		SchemaTitle: schemaValue[string](schema["title"]),
 		Fields:      fields,
 	}
 }
 
+// cyclo-allow(side_effect_density): Traverse array children with their schema; recursive call summaries refer to the builder-owned index.
 func (b *builder) indexArray(arr []any, schema map[string]any, path spec.NormalizedPath) {
-	itemSchema := mapOf(schema["items"])
+	itemSchema := schemaValue[map[string]any](schema["items"])
 	if itemSchema == nil {
 		return
 	}
@@ -122,16 +128,18 @@ func (b *builder) indexArray(arr []any, schema map[string]any, path spec.Normali
 // properties wins; patternProperties is consulted next; additionalProperties
 // is consulted last. Returns nil for keys the schema doesn't know about
 // (which is normal for "x-" extensions when additionalProperties is false).
+//
+//lint:ignore chop, thin_slice Schema lookup must prefer direct properties, then pattern properties, then additional properties.
 func (b *builder) schemaForKey(schema map[string]any, key string) map[string]any {
-	if props := mapOf(schema["properties"]); props != nil {
+	if props := schemaValue[map[string]any](schema["properties"]); props != nil {
 		if direct, ok := props[key]; ok {
-			return mapOf(direct)
+			return schemaValue[map[string]any](direct)
 		}
 	}
-	if patternProps := mapOf(schema["patternProperties"]); patternProps != nil {
+	if patternProps := schemaValue[map[string]any](schema["patternProperties"]); patternProps != nil {
 		for pattern, candidate := range patternProps {
 			if matchesPattern(pattern, key) {
-				return mapOf(candidate)
+				return schemaValue[map[string]any](candidate)
 			}
 		}
 	}
@@ -156,6 +164,8 @@ func (b *builder) deref(schema map[string]any) map[string]any {
 
 // chooseOneOf picks the concrete branch from a v1.4-style oneOf. Every
 // oneOf in the meta-schema is [concreteOpenRPCType, referenceObject];
+//
+//lint:ignore thin_slice Select the first concrete OpenRPC branch, excluding unresolved and reference-object branches.
 func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 	raw, ok := schema["oneOf"].([]any)
 	if !ok {
@@ -167,7 +177,7 @@ func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 			continue
 		}
 		resolved := b.deref(m)
-		if resolved == nil || stringOf(resolved["title"]) == "referenceObject" {
+		if resolved == nil || schemaValue[string](resolved["title"]) == "referenceObject" {
 			continue
 		}
 		return resolved
@@ -189,12 +199,9 @@ func matchesPattern(pattern, key string) bool {
 	return false
 }
 
-func mapOf(v any) map[string]any {
-	m, _ := v.(map[string]any)
-	return m
-}
-
-func stringOf(v any) string {
-	s, _ := v.(string)
-	return s
+// schemaValue reads a typed schema value; absent or mismatched values use
+// the type's zero value so callers can handle malformed schema fragments.
+func schemaValue[T any](value any) T {
+	result, _ := value.(T)
+	return result
 }

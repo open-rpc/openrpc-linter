@@ -41,6 +41,9 @@ var (
 
 // For selects the meta-schema matching doc's root openrpc field. A missing or
 // non-string field uses Latest so validation can report the malformed field.
+// cyclo-allow(side_effect_density): Select a schema family using the once-loaded embedded resources; cross-package parsing summaries are conservative.
+//
+//lint:ignore parameterize Schema selection falls back for malformed versions; its result and error policy differ from JSON cloning.
 func For(doc any) (*MetaSchema, error) {
 	version, err := Version(doc)
 	if err != nil {
@@ -51,6 +54,7 @@ func For(doc any) (*MetaSchema, error) {
 
 // ForVersion selects a schema family explicitly. Add a case here whenever
 // spec-types publishes a new OpenRPC specification family.
+// cyclo-allow(side_effect_density): Dispatch to the once-loaded embedded schema family; initialization effects are intentional and bounded.
 func ForVersion(version string) (*MetaSchema, error) {
 	switch {
 	case version == "1.4" || strings.HasPrefix(version, "1.4."):
@@ -82,6 +86,9 @@ func Latest() (*MetaSchema, error) {
 	return loadV14()
 }
 
+// cyclo-allow(side_effect_density): Decode embedded schema JSON and normalize its owned reference tree; no network resource is loaded here.
+//
+//lint:ignore chop, thin_slice Decode embedded schema JSON and normalize its owned reference tree; no network resource is loaded here.
 func parse(version, raw string) (*MetaSchema, error) {
 	root, err := jsonschema.UnmarshalJSON(strings.NewReader(raw))
 	if err != nil {
@@ -98,6 +105,7 @@ func parse(version, raw string) (*MetaSchema, error) {
 // rewriteJSONSchemaRefs replaces the external meta.json-schema.tools aliases
 // emitted by spec-types with the equivalent draft-07 resources embedded in
 // jsonschema/v6. Validation therefore never needs network access.
+// cyclo-allow(side_effect_density): Rewrite reference aliases in the owned decoded schema tree so validation uses embedded resources.
 func rewriteJSONSchemaRefs(value any) {
 	switch node := value.(type) {
 	case map[string]any:
@@ -130,6 +138,8 @@ func (m *MetaSchema) Root() map[string]any {
 
 // Resolve follows a local "#/definitions/<name>" reference. External
 // references are outside the OpenRPC selector's indexing boundary.
+//
+//lint:ignore thin_slice Resolve only embedded local definitions; malformed or absent maps remain outside the lookup boundary.
 func (m *MetaSchema) Resolve(ref string) map[string]any {
 	const prefix = "#/definitions/"
 	if !strings.HasPrefix(ref, prefix) {

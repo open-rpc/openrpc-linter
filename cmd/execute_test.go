@@ -22,7 +22,7 @@ func TestExecuteRequestsFailureExit(t *testing.T) {
 	rootCmd.SetOut(io.Discard)
 	rootCmd.SetErr(io.Discard)
 	code := 0
-	execute(func(value int) { code = value })
+	execute(rootCmd.Execute, func(value int) { code = value })
 	if code != 1 {
 		t.Fatalf("exit code: %d", code)
 	}

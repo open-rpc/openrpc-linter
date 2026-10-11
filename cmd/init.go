@@ -20,6 +20,9 @@ type InitOptions struct {
 	Force     bool
 }
 
+// cyclo-allow(side_effect_density): This CLI boundary creates the rules file and reports its result; filesystem and output effects are intentional.
+//
+//lint:ignore thin_slice This CLI boundary creates the rules file and reports its result; filesystem and output effects are intentional.
 func RunInit(opts InitOptions) error {
 	if opts.RulesFile == "" {
 		opts.RulesFile = "rules.yml"
@@ -62,6 +65,9 @@ var initCmd = &cobra.Command{
 	},
 }
 
+// cyclo-allow(side_effect_density): This Cobra adapter reads CLI state, invokes initialization, and requests the process exit on failure.
+//
+//lint:ignore parameterize File creation has InitOptions and its own IO contract; shared CLI guard syntax does not form one lint algorithm.
 func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {
 	rulesFile := "rules.yml"
 	if len(args) > 0 {

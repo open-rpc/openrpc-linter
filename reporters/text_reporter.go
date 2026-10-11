@@ -59,6 +59,9 @@ type pending struct {
 	methodIdx int
 }
 
+// cyclo-allow(side_effect_density): This reporter boundary writes the grouped report and propagates writer errors.
+//
+//lint:ignore chop, thin_slice This reporter boundary writes the grouped report and propagates writer errors.
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
 	pendings, summary := collectRows(results)
 	if len(pendings) == 0 {
@@ -95,6 +98,7 @@ type violationSummary struct {
 	rules    map[string]struct{}
 }
 
+// cyclo-allow(mutation_per_target, side_effect_density): Accumulate report-owned rows or counters; the receiver exists only for this report and does not escape.
 func (s *violationSummary) add(result types.RuleFunctionResult) {
 	s.rules[result.RuleID] = struct{}{}
 	switch effectiveSeverity(result.Severity) {
@@ -107,6 +111,9 @@ func (s *violationSummary) add(result types.RuleFunctionResult) {
 	}
 }
 
+// cyclo-allow(side_effect_density): Accumulate a local report summary and rows; conservative receiver-call effects refer to report-owned state.
+//
+//lint:ignore thin_slice Accumulate a local report summary and rows; conservative receiver-call effects refer to report-owned state.
 func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 	pendings := make([]pending, 0, len(results))
 	summary := violationSummary{rules: make(map[string]struct{})}
@@ -120,6 +127,7 @@ func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 	return pendings, formatViolationSummary(summary.errors, summary.warnings, summary.info, len(summary.rules))
 }
 
+//lint:ignore thin_slice One immutable report row carries its path, severity, labels, and group key for later layout.
 func pendingRow(result types.RuleFunctionResult) pending {
 	path := ""
 	methodIndex := -1
@@ -174,6 +182,7 @@ func groupRows(pendings []pending) []*bucket {
 	return groups
 }
 
+// cyclo-allow(side_effect_density): Accumulate report-owned rows or counters; the receiver exists only for this report and does not escape.
 func (b *bucket) add(p pending) {
 	b.rows = append(b.rows, p.row)
 	if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
@@ -181,6 +190,7 @@ func (b *bucket) add(p pending) {
 	}
 }
 
+//lint:ignore chop One stable comparator preserves group kind priority, document method position, and name tie-breaking.
 func (b *bucket) less(other *bucket) bool {
 	if rank, otherRank := groupOrder[b.kind], groupOrder[other.kind]; rank != otherRank {
 		return rank < otherRank
@@ -213,6 +223,9 @@ func pathColumnWidth(pendings []pending) int {
 	return pathW
 }
 
+// cyclo-allow(side_effect_density): This output boundary writes a group and its rows, stopping at the first writer failure.
+//
+//lint:ignore chop, thin_slice This output boundary writes a group and its rows, stopping at the first writer failure.
 func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
 	if _, err := fmt.Fprintf(output, "\n%s\n", formatGroupHeader(b.kind, b.name)); err != nil {
 		return err

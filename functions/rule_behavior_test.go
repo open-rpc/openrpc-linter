@@ -49,6 +49,14 @@ func TestTruthyValuesAndPaths(t *testing.T) {
 }
 
 func TestRegisteredFunctions(t *testing.T) {
+	saved := FunctionRegistry
+	t.Cleanup(func() { FunctionRegistry = saved })
+	custom := &TruthyRule{}
+	FunctionRegistry = map[string]func() types.RuleFunction{"custom": func() types.RuleFunction { return custom }}
+	RegisterFunctions()
+	if FunctionRegistry["custom"]() != custom {
+		t.Fatal("registration replaced the custom factory")
+	}
 	for _, name := range []string{"truthy", "schema", "unique"} {
 		if factory := FunctionRegistry[name]; factory == nil || factory() == nil {
 			t.Fatalf("missing factory %q", name)
