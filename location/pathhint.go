@@ -133,15 +133,13 @@ func FriendlyPath(jsonPath string) string {
 	}
 
 	var out []byte
-	first := true
 	for _, m := range matches {
 		segment := "[" + m[2] + "]"
 		if m[1] != "" {
 			segment = m[1]
-			if !first {
+			if len(out) > 0 {
 				segment = "." + segment
 			}
-			first = false
 		}
 		out = append(out, segment...)
 	}

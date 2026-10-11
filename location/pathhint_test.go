@@ -125,6 +125,8 @@ func TestFriendlyPath(t *testing.T) {
 		{`$['components']['schemas']['Pet']['title']`, "components.schemas.Pet.title"},
 		{`$['info']['description']`, "info.description"},
 		{"$", "$"},
+		{`$[2]['title']`, "[2].title"},
+		{`$[2][3]['title']`, "[2][3].title"},
 	}
 	for _, tt := range tests {
 		if got := FriendlyPath(tt.in); got != tt.want {
