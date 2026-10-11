@@ -107,3 +107,29 @@ func TestForcedColorAndSecondarySchema(t *testing.T) {
 		t.Fatal("rule order")
 	}
 }
+
+func TestSchemaLabelWithSectionGroup(t *testing.T) {
+	if got := formatSecondaryLabels(types.PathLabels{Schema: "Result"}, groupKindSection); !reflect.DeepEqual(got, []string{`schema: "Result"`}) {
+		t.Fatalf("schema label: %v", got)
+	}
+	groups := groupRows([]pending{
+		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "same", ruleID: "a"}, methodIdx: -1},
+		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "same", ruleID: "z"}, methodIdx: -1},
+	})
+	if groups[0].rows[0].ruleID != "a" {
+		t.Fatal("rule order")
+	}
+}
+
+func TestTagLabelAndPathOrdering(t *testing.T) {
+	if got := formatSecondaryLabels(types.PathLabels{Tag: "rpc"}, groupKindMethod); !reflect.DeepEqual(got, []string{`tag: "rpc"`}) {
+		t.Fatalf("tag label: %v", got)
+	}
+	groups := groupRows([]pending{
+		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "z"}, methodIdx: -1},
+		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "a"}, methodIdx: -1},
+	})
+	if groups[0].rows[0].path != "a" {
+		t.Fatal("path order")
+	}
+}

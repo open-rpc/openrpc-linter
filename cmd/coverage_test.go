@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-rpc/openrpc-linter/reporters"
 	"github.com/open-rpc/openrpc-linter/types"
 	"github.com/spf13/cobra"
 )
@@ -131,4 +132,25 @@ func TestExecuteHelp(t *testing.T) {
 	rootCmd.SetArgs([]string{"--help"})
 	rootCmd.SetOut(io.Discard)
 	Execute()
+}
+
+func TestLintCommandDefaultsAndExplicitFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("openrpc.json", []byte(`{"info":{"title":"API"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("rules.yml", []byte("rules:\n  r:\n    given: '$'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldRules, oldFormat := rulesFile, outputFormat
+	t.Cleanup(func() { rulesFile = oldRules; outputFormat = oldFormat })
+	rulesFile = "rules.yml"
+	outputFormat = "text"
+	command := &cobra.Command{}
+	command.SetOut(io.Discard)
+	lintCmd.Run(command, nil)
+	lintCmd.Run(command, []string{"openrpc.json"})
+	if _, ok := GetReporter("text").(*reporters.TextReporter); !ok {
+		t.Fatal("text reporter")
+	}
 }
