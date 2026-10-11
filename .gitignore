@@ -9,3 +9,6 @@ npm/test/host-bin
 dist/
 .claude/
 
+
+# Pinned development tools
+.tools/

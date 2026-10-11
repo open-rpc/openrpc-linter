@@ -217,3 +217,18 @@ jobs:
       # - run: npx @open-rpc/openrpc-linter init
       - run: npx @open-rpc/openrpc-linter@0.0.18 lint openrpc.json -r rules.yml
 ```
+
+## Quality gate
+
+Run `make quality-gate` with Bun installed. It installs the pinned Cyclo version
+and checks quality and pattern findings per 1,000 production functions against
+`quality-baseline.json`. Both rates must stay at or below their baseline; there
+is no extra allowance. Both use Cyclo's production function count, including
+function literals. Test functions are excluded. Findings remain visible and
+lower rates pass. This aggregate gate allows one finding to replace another.
+
+After a reviewed improvement, run `make quality-baseline` to lower the baseline
+and commit the updated file. CI checks the baseline without changing it. Keep
+the Cyclo revision pinned; tool upgrades require a reviewed baseline update.
+Functions must also stay within 200 code lines, and CI rejects any uncovered
+Go statements independently of these rates.

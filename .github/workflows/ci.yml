@@ -47,6 +47,11 @@ jobs:
     - name: Run tests
       run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
+    - name: Require 100% Go statement coverage
+      run: |
+        awk 'NR > 1 && $2 > 0 && $3 == 0 { print "Uncovered statements:", $1; failed = 1 } END { exit failed }' coverage.out
+        go tool cover -func=coverage.out | tail -n 1
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
@@ -71,6 +76,26 @@ jobs:
 
     - name: Run linters
       run: make lint
+
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.27.1'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: '1.4.2'
+
+    - name: Check quality and pattern rates
+      run: make quality-gate
 
   npm:
     name: npm (shim smoke)
