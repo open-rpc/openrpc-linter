@@ -35,8 +35,9 @@ test("CLI rejects failed analysis and hard-limit violations", async () => {
   const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
   const directory = mkdtempSync(join(tmpdir(), "openrpc-quality-gate-"));
-  const script = new URL("./quality-gate.ts", import.meta.url).pathname;
+  const script = fileURLToPath(new URL("./quality-gate.ts", import.meta.url));
   try {
     writeFileSync(join(directory, "quality-baseline.json"), JSON.stringify({ ...baseline, version: 1, cyclo_version: "a".repeat(40) }));
     for (const scenario of [
