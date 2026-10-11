@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -176,11 +177,20 @@ func checkDocumentChange(original, updated map[string]any) error {
 	if !regexp.MustCompile(`(?i)\bpong\b`).MatchString(description) {
 		return fmt.Errorf("FAIL: ping needs a description mentioning pong")
 	}
-	delete(method, "description")
-	if !reflect.DeepEqual(original, updated) {
+	if !reflect.DeepEqual(original, withoutMethodDescription(updated, method)) {
 		return fmt.Errorf("FAIL: unrelated document changes")
 	}
 	return nil
+}
+
+// withoutMethodDescription isolates the one allowed edit without changing the
+// caller's document or its method map. Other values remain shared for comparison.
+func withoutMethodDescription(document, method map[string]any) map[string]any {
+	cleanedMethod := maps.Clone(method)
+	delete(cleanedMethod, "description")
+	cleanedDocument := maps.Clone(document)
+	cleanedDocument["methods"] = []any{cleanedMethod}
+	return cleanedDocument
 }
 
 func checkRules(fixtures, workspace string) error {

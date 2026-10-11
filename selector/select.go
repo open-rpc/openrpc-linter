@@ -27,20 +27,19 @@ func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 		return nil
 	}
 	segments := p.Query().Segments()
-	return selectSegments(segments, doc, spec.NormalizedPath{}, idx)
+	return selectSegments(segments, doc, idx)
 }
 
 // selectSegments evaluates segments against current.
-// basePath is the canonical path of current within root (empty for the
-// initial call). idx is the precomputed schema-aware Index.
+// Returned paths are relative to current; compound selection rebases them.
+// idx is the precomputed schema-aware Index.
 func selectSegments(
 	segments []*spec.Segment,
 	current any,
-	basePath spec.NormalizedPath,
 	idx *Index,
 ) []Target {
 	if len(segments) == 0 {
-		return []Target{valueTarget(basePath, current)}
+		return []Target{valueTarget(nil, current)}
 	}
 
 	lastDescendant := lastDescendantIndex(segments)
@@ -58,7 +57,7 @@ func selectSegments(
 		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
 	}
 	midSegments := slices.Concat(prefix, []*spec.Segment{descendant})
-	midTargets := selectSegments(midSegments, current, spec.NormalizedPath{}, idx)
+	midTargets := selectSegments(midSegments, current, idx)
 	return compoundTargets(midTargets, suffix, idx)
 }
 
@@ -95,7 +94,7 @@ func compoundTargets(intermediates []Target, suffix []*spec.Segment, idx *Index)
 		if !intermediate.Exists {
 			continue
 		}
-		children := selectSegments(suffix, intermediate.Node, intermediate.Path, idx)
+		children := selectSegments(suffix, intermediate.Node, idx)
 		for _, child := range children {
 			out = append(out, rebase(child, intermediate.Path))
 		}

@@ -16,18 +16,12 @@ func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContex
 	if t != nil {
 		path = t.PathString()
 		if t.Field != "" && !t.Exists {
-			return []types.RuleFunctionResult{{
-				Message: "missing field '" + t.Field + "'",
-				Path:    resultPath(path),
-			}}
+			return ruleFailure("missing field '"+t.Field+"'", path)
 		}
 	}
 
 	if !truthyValue(value) {
-		return []types.RuleFunctionResult{{
-			Message: "Field must have a truthy value",
-			Path:    resultPath(path),
-		}}
+		return ruleFailure("Field must have a truthy value", path)
 	}
 
 	return nil

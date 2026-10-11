@@ -149,3 +149,18 @@ func TestEvalRequestsFailureExit(t *testing.T) {
 		t.Fatalf("exit code: %d", code)
 	}
 }
+
+func TestEvalCheckPreservesDocument(t *testing.T) {
+	original := map[string]any{"methods": []any{map[string]any{"name": "ping"}}}
+	for _, name := range []string{"ping", "other"} {
+		method := map[string]any{"name": name, "description": "pong"}
+		updated := map[string]any{"methods": []any{method}}
+		err := checkDocumentChange(original, updated)
+		if (name == "ping") != (err == nil) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if method["description"] != "pong" {
+			t.Fatalf("check changed the caller's method: %+v", method)
+		}
+	}
+}

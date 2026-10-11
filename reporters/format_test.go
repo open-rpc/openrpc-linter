@@ -51,6 +51,7 @@ func TestResolveGroup(t *testing.T) {
 		{"components schema", types.PathLabels{Section: "components", Schema: "Pet"}, groupKindSchema, "Pet"},
 		{"components descriptor", types.PathLabels{Section: "components", Descriptor: "Block"}, groupKindDescriptor, "Block"},
 		{"components tag", types.PathLabels{Section: "components", Tag: "eth"}, groupKindTag, "eth"},
+		{"components section without an anchor", types.PathLabels{Section: "components"}, groupKindSection, "components"},
 		{"info section", types.PathLabels{Section: "info"}, groupKindSection, "info"},
 		{"empty falls back to general", types.PathLabels{}, groupKindGeneral, "general"},
 	}

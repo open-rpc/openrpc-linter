@@ -11,7 +11,9 @@ import (
 	"testing/fstest"
 
 	"github.com/open-rpc/openrpc-linter/functions"
+	"github.com/open-rpc/openrpc-linter/selector"
 	"github.com/open-rpc/openrpc-linter/types"
+	"github.com/theory/jsonpath/spec"
 )
 
 func TestRuleOverrideFields(t *testing.T) {
@@ -100,5 +102,21 @@ func TestRulesPathAfterWorkspaceRemoval(t *testing.T) {
 	}
 	if _, err := LoadRulesFileFromPath("rules.yml"); err == nil {
 		t.Fatal("expected relative path error")
+	}
+}
+
+type movingTargetRule struct{}
+
+func (movingTargetRule) RunRule(_ any, context types.RuleFunctionContext) []types.RuleFunctionResult {
+	context.Target.Path = spec.NormalizedPath{spec.Name("changed")}
+	return []types.RuleFunctionResult{{Message: "fallback"}, {Message: "explicit", Path: []string{"$.explicit"}}}
+}
+
+func TestResultPathsFollowCallback(t *testing.T) {
+	target := selector.Target{}
+	got := executeTarget(movingTargetRule{}, &target, types.RuleFunctionContext{}, nil)
+	want := []types.RuleFunctionResult{{Message: "fallback", Path: []string{"$['changed']"}}, {Message: "explicit", Path: []string{"$.explicit"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("callback paths: %+v, want %+v", got, want)
 	}
 }

@@ -63,20 +63,13 @@ var initCmd = &cobra.Command{
 }
 
 func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {
-	rulesFile := "rules.yml"
-	if len(args) > 0 {
-		rulesFile = args[0]
-	}
-
 	opts := InitOptions{
-		RulesFile: rulesFile,
+		RulesFile: commandArgument(args, "rules.yml"),
 		Output:    cmd.OutOrStdout(),
 		Force:     initForce,
 	}
 
-	if err := RunInit(opts); err != nil {
-		exit(1)
-	}
+	execute(func() error { return RunInit(opts) }, exit)
 }
 
 func init() {

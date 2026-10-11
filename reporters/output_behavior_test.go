@@ -75,6 +75,10 @@ func TestStableGroupedRows(t *testing.T) {
 	if got := groups[0].rows; got[0].ruleID != "a" || got[1].message != "a" || got[2].message != "z" {
 		t.Fatalf("row order: %+v", got)
 	}
+	components := groupRows([]pending{{row: row{groupKind: groupKindSchema, groupName: "Zulu"}}, {row: row{groupKind: groupKindSchema, groupName: "Alpha"}}})
+	if len(components) != 2 || components[0].name != "Alpha" || components[1].name != "Zulu" {
+		t.Fatalf("component groups must sort by name: %+v", components)
+	}
 	known := &bucket{kind: groupKindMethod, name: "z", methodIx: 1}
 	unknown := &bucket{kind: groupKindMethod, name: "a", methodIx: -1}
 	if !known.less(unknown) || unknown.less(known) {

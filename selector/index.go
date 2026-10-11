@@ -123,24 +123,16 @@ func (b *builder) indexArray(arr []any, schema map[string]any, path spec.Normali
 // is consulted last. Returns nil for keys the schema doesn't know about
 // (which is normal for "x-" extensions when additionalProperties is false).
 func (b *builder) schemaForKey(schema map[string]any, key string) map[string]any {
-	if props := schemaValue[map[string]any](schema["properties"]); props != nil {
-		if direct, ok := props[key]; ok {
-			return schemaValue[map[string]any](direct)
+	properties := schemaValue[map[string]any](schema["properties"])
+	if direct, exists := properties[key]; exists {
+		return schemaValue[map[string]any](direct)
+	}
+	for pattern, candidate := range schemaValue[map[string]any](schema["patternProperties"]) {
+		if matchesPattern(pattern, key) {
+			return schemaValue[map[string]any](candidate)
 		}
 	}
-	if patternProps := schemaValue[map[string]any](schema["patternProperties"]); patternProps != nil {
-		for pattern, candidate := range patternProps {
-			if matchesPattern(pattern, key) {
-				return schemaValue[map[string]any](candidate)
-			}
-		}
-	}
-	if addl, ok := schema["additionalProperties"]; ok {
-		if m, ok := addl.(map[string]any); ok {
-			return m
-		}
-	}
-	return nil
+	return schemaValue[map[string]any](schema["additionalProperties"])
 }
 
 // deref returns the resolved local definition if schema is a {"$ref": "#/definitions/..."}
@@ -157,16 +149,8 @@ func (b *builder) deref(schema map[string]any) map[string]any {
 // chooseOneOf picks the concrete branch from a v1.4-style oneOf. Every
 // oneOf in the meta-schema is [concreteOpenRPCType, referenceObject];
 func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
-	raw, ok := schema["oneOf"].([]any)
-	if !ok {
-		return nil
-	}
-	for _, branch := range raw {
-		m, ok := branch.(map[string]any)
-		if !ok {
-			continue
-		}
-		resolved := b.deref(m)
+	for _, branch := range schemaValue[[]any](schema["oneOf"]) {
+		resolved := b.deref(schemaValue[map[string]any](branch))
 		if resolved == nil || schemaValue[string](resolved["title"]) == "referenceObject" {
 			continue
 		}

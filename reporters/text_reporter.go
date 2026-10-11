@@ -89,21 +89,24 @@ func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int
 }
 
 type violationSummary struct {
-	errors   int
-	warnings int
-	info     int
-	rules    map[string]struct{}
+	counts [3]int
+	rules  map[string]struct{}
 }
 
 func (s *violationSummary) add(result types.RuleFunctionResult) {
 	s.rules[result.RuleID] = struct{}{}
-	switch effectiveSeverity(result.Severity) {
+	s.counts[severityIndex(result.Severity)]++
+}
+
+// severityIndex shares the default-to-error policy used by report labels.
+func severityIndex(severity types.Severity) int {
+	switch effectiveSeverity(severity) {
 	case types.SeverityWarn:
-		s.warnings++
+		return 1
 	case types.SeverityInfo:
-		s.info++
+		return 2
 	default:
-		s.errors++
+		return 0
 	}
 }
 
@@ -117,7 +120,7 @@ func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 		summary.add(result)
 		pendings = append(pendings, pendingRow(result))
 	}
-	return pendings, formatViolationSummary(summary.errors, summary.warnings, summary.info, len(summary.rules))
+	return pendings, formatViolationSummary(summary.counts[0], summary.counts[1], summary.counts[2], len(summary.rules))
 }
 
 func pendingRow(result types.RuleFunctionResult) pending {
@@ -185,7 +188,15 @@ func (b *bucket) less(other *bucket) bool {
 	if rank, otherRank := groupOrder[b.kind], groupOrder[other.kind]; rank != otherRank {
 		return rank < otherRank
 	}
-	if b.kind != groupKindMethod || b.methodIx == other.methodIx {
+	if b.kind != groupKindMethod {
+		return b.name < other.name
+	}
+	return b.methodLess(other)
+}
+
+// methodLess puts methods with a document index before methods without one.
+func (b *bucket) methodLess(other *bucket) bool {
+	if b.methodIx == other.methodIx {
 		return b.name < other.name
 	}
 	if b.methodIx < 0 {
@@ -218,11 +229,7 @@ func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
 		return err
 	}
 	for _, row := range b.rows {
-		pathCell := styledCell(row.path, pathW, ansiDarkGrey, colorEnabled)
-		sevCell := formatSeverityCol(row.severity, colorEnabled)
-		msgCell := styledCell(row.message, colMessage, ansiLightGrey, colorEnabled)
-		ruleCell := colorize(row.ruleID, ansiDarkGrey, colorEnabled)
-		if _, err := io.WriteString(output, formatViolationLine(pathCell, sevCell, msgCell, ruleCell)); err != nil {
+		if _, err := io.WriteString(output, row.formattedLine(pathW, colorEnabled)); err != nil {
 			return err
 		}
 		for _, sec := range formatSecondaryLabels(row.pathLabels, row.groupKind) {
@@ -233,6 +240,15 @@ func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
 		}
 	}
 	return nil
+}
+
+// formattedLine owns column styling; the bucket owns write order and errors.
+func (r row) formattedLine(pathW int, colorEnabled bool) string {
+	pathCell := styledCell(r.path, pathW, ansiDarkGrey, colorEnabled)
+	severityCell := formatSeverityCol(r.severity, colorEnabled)
+	messageCell := styledCell(r.message, colMessage, ansiLightGrey, colorEnabled)
+	ruleCell := colorize(r.ruleID, ansiDarkGrey, colorEnabled)
+	return formatViolationLine(pathCell, severityCell, messageCell, ruleCell)
 }
 
 func formatViolationSummary(errorCount, warnCount, infoCount, rulesWithViolations int) string {

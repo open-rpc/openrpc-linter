@@ -23,17 +23,17 @@ func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContex
 	then := context.Rule.Then
 
 	if len(then.FunctionOptions) == 0 {
-		return []types.RuleFunctionResult{{Message: "schema function requires functionOptions"}}
+		return ruleFailure("schema function requires functionOptions", "")
 	}
 
 	schema, err := r.schemaFor(then)
 	if err != nil {
-		return []types.RuleFunctionResult{{Message: fmt.Sprintf("Invalid schema functionOptions: %v", err)}}
+		return ruleFailure(fmt.Sprintf("Invalid schema functionOptions: %v", err), "")
 	}
 
 	err = schema.Validate(value)
 	if err != nil {
-		return []types.RuleFunctionResult{{Message: fmt.Sprintf("Value does not match schema: %v", err)}}
+		return ruleFailure(fmt.Sprintf("Value does not match schema: %v", err), "")
 	}
 
 	return nil

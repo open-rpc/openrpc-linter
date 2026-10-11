@@ -131,15 +131,12 @@ func (m *MetaSchema) Root() map[string]any {
 // Resolve follows a local "#/definitions/<name>" reference. External
 // references are outside the OpenRPC selector's indexing boundary.
 func (m *MetaSchema) Resolve(ref string) map[string]any {
-	const prefix = "#/definitions/"
-	if !strings.HasPrefix(ref, prefix) {
+	name, local := strings.CutPrefix(ref, "#/definitions/")
+	if !local {
 		return nil
 	}
-	defs, _ := m.root["definitions"].(map[string]any)
-	if defs == nil {
-		return nil
-	}
-	target, _ := defs[strings.TrimPrefix(ref, prefix)].(map[string]any)
+	definitions, _ := m.root["definitions"].(map[string]any)
+	target, _ := definitions[name].(map[string]any)
 	return target
 }
 

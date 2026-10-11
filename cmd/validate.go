@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/open-rpc/openrpc-linter/metaschema"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -18,29 +18,25 @@ var validateCmd = &cobra.Command{
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
-	filename := "openrpc.json"
-	if len(args) > 0 {
-		filename = args[0]
-	}
+	filename := commandArgument(args, "openrpc.json")
 
 	openrpc, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("Error reading %s: %w", filename, err)
 	}
 
-	data, parseErr := jsonschema.UnmarshalJSON(strings.NewReader(string(openrpc)))
+	data, parseErr := jsonschema.UnmarshalJSON(bytes.NewReader(openrpc))
 	if parseErr != nil {
 		return fmt.Errorf("Error parsing JSON: %w", parseErr)
-	}
-
-	meta, metaErr := metaschema.For(data)
-	if metaErr != nil {
-		return metaErr
 	}
 
 	version, versionErr := metaschema.Version(data)
 	if versionErr != nil {
 		return fmt.Errorf("Error getting OpenRPC version: %w", versionErr)
+	}
+	meta, metaErr := metaschema.ForVersion(version)
+	if metaErr != nil {
+		return metaErr
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Validating OpenRPC document: %s (OpenRPC %s)\n", filename, version)

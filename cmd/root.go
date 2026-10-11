@@ -40,3 +40,11 @@ func execute(run func() error, exit func(int)) {
 		exit(1)
 	}
 }
+
+// commandArgument uses the command's documented default when no file is given.
+func commandArgument(args []string, fallback string) string {
+	if len(args) == 0 {
+		return fallback
+	}
+	return args[0]
+}

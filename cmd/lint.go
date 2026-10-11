@@ -45,15 +45,10 @@ func normalizeSeverity(severity types.Severity) (types.Severity, error) {
 		return types.SeverityError, nil
 	}
 
-	switch types.Severity(strings.ToLower(string(severity))) {
-	case types.SeverityIgnore:
-		return types.SeverityIgnore, nil
-	case types.SeverityError:
-		return types.SeverityError, nil
-	case types.SeverityWarn:
-		return types.SeverityWarn, nil
-	case types.SeverityInfo:
-		return types.SeverityInfo, nil
+	normalized := types.Severity(strings.ToLower(string(severity)))
+	switch normalized {
+	case types.SeverityIgnore, types.SeverityError, types.SeverityWarn, types.SeverityInfo:
+		return normalized, nil
 	default:
 		return "", fmt.Errorf("invalid severity %q; expected one of: error, warn, info, ignore", severity)
 	}
@@ -187,21 +182,14 @@ var lintCmd = &cobra.Command{
 }
 
 func runLintCommand(cmd *cobra.Command, args []string, exit func(int)) {
-	openrpcFile := "openrpc.json"
-	if len(args) > 0 {
-		openrpcFile = args[0]
-	}
-
 	opts := LintOptions{
-		OpenRPCFile: openrpcFile,
+		OpenRPCFile: commandArgument(args, "openrpc.json"),
 		RulesFile:   rulesFile,
 		Output:      cmd.OutOrStdout(),
 		Format:      outputFormat,
 	}
 
-	if err := RunLint(opts); err != nil {
-		exit(1)
-	}
+	execute(func() error { return RunLint(opts) }, exit)
 }
 
 func init() {

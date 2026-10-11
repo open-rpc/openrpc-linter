@@ -20,86 +20,94 @@ type pathSegment struct {
 
 // Resolve derives PathLabels by walking doc along the normalized JSONPath.
 func Resolve(doc any, path string) types.PathLabels {
-	segs := parseJSONPath(path)
-	if len(segs) == 0 {
-		return types.PathLabels{}
-	}
-
+	segments := parseJSONPath(path)
 	var labels types.PathLabels
-	cur := doc
-
-	for i := 0; i < len(segs); i++ {
-		seg := segs[i]
-		prevKey := ""
-		if i > 0 && !segs[i-1].isIdx {
-			prevKey = segs[i-1].key
+	current := doc
+	for i, segment := range segments {
+		previousKey := ""
+		if i > 0 && !segments[i-1].isIdx {
+			previousKey = segments[i-1].key
 		}
+		next, present, valid := segment.selectNode(current)
+		if !valid {
+			return types.PathLabels{}
+		}
+		if segment.isIdx {
+			labels = labelsAtIndex(labels, previousKey, next)
+		} else {
+			labels = labelsAtKey(labels, segment.key, previousKey, next)
+		}
+		if !present {
+			return labels
+		}
+		current = next
+	}
+	return labels
+}
 
-		switch {
-		case !seg.isIdx:
-			switch seg.key {
-			case "info", "components", "methods":
-				labels.Section = seg.key
-			}
+// selectNode distinguishes an absent object field from an invalid traversal.
+// Absent fields retain the labels collected so far; invalid traversal clears them.
+func (s pathSegment) selectNode(current any) (node any, present, valid bool) {
+	if s.isIdx {
+		array, ok := current.([]any)
+		if !ok || s.index < 0 || s.index >= len(array) {
+			return nil, false, false
+		}
+		return array[s.index], true, true
+	}
+	object, ok := current.(map[string]any)
+	if !ok {
+		return nil, false, false
+	}
+	node, present = object[s.key]
+	return node, present, true
+}
 
-			m, ok := cur.(map[string]any)
-			if !ok {
-				return types.PathLabels{}
-			}
-
-			if prevKey == "schemas" && labels.Section == "components" {
-				labels.Schema = seg.key
-			}
-
-			val, exists := m[seg.key]
-			if !exists {
-				return labels
-			}
-			cur = val
-
-			if seg.key == "schema" && labels.Method != "" {
-				if title, ok := stringField(cur, "title"); ok && title != "" {
-					labels.Schema = title
-				}
-			}
-
-		case seg.isIdx:
-			arr, ok := cur.([]any)
-			if !ok || seg.index < 0 || seg.index >= len(arr) {
-				return types.PathLabels{}
-			}
-			item := arr[seg.index]
-
-			switch prevKey {
-			case "methods":
-				if name, ok := stringField(item, "name"); ok {
-					labels.Method = name
-				}
-			case "params":
-				if name, ok := stringField(item, "name"); ok {
-					labels.Param = name
-				}
-			case "contentDescriptors":
-				if name, ok := stringField(item, "name"); ok {
-					labels.Descriptor = name
-				}
-			case "tags":
-				if name, ok := stringField(item, "name"); ok {
-					labels.Tag = name
-				}
-			case "schemas":
-				if labels.Section == "components" {
-					if title, ok := stringField(item, "title"); ok && title != "" {
-						labels.Schema = title
-					}
-				}
-			}
-
-			cur = item
+func labelsAtKey(labels types.PathLabels, key, previousKey string, node any) types.PathLabels {
+	switch key {
+	case "info", "components", "methods":
+		labels.Section = key
+	}
+	if previousKey == "schemas" && labels.Section == "components" {
+		labels.Schema = key
+	}
+	if key == "schema" && labels.Method != "" {
+		if title, ok := stringField(node, "title"); ok {
+			labels.Schema = title
 		}
 	}
-
 	return labels
+}
+
+func labelsAtIndex(labels types.PathLabels, collection string, node any) types.PathLabels {
+	destination, field := indexLabel(&labels, collection)
+	if destination == nil {
+		return labels
+	}
+	if name, ok := stringField(node, field); ok {
+		*destination = name
+	}
+	return labels
+}
+
+// indexLabel selects the field and source property for one array collection.
+// Returning a field pointer avoids building a map of addresses on every step.
+func indexLabel(labels *types.PathLabels, collection string) (*string, string) {
+	switch collection {
+	case "methods":
+		return &labels.Method, "name"
+	case "params":
+		return &labels.Param, "name"
+	case "contentDescriptors":
+		return &labels.Descriptor, "name"
+	case "tags":
+		return &labels.Tag, "name"
+	case "schemas":
+		if labels.Section == "components" {
+			return &labels.Schema, "title"
+		}
+	}
+	return nil, ""
 }
 
 // Enrich fills PathLabels on each result from the resolved document.
@@ -158,14 +166,7 @@ func parseJSONPath(path string) []pathSegment {
 }
 
 func stringField(node any, field string) (string, bool) {
-	m, ok := node.(map[string]any)
-	if !ok {
-		return "", false
-	}
-	v, ok := m[field]
-	if !ok {
-		return "", false
-	}
-	s, ok := v.(string)
-	return s, ok && s != ""
+	object, _ := node.(map[string]any)
+	value, ok := object[field].(string)
+	return value, ok && value != ""
 }

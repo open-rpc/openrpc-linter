@@ -11,6 +11,7 @@ func TestPathBoundaryFallbacks(t *testing.T) {
 		path string
 	}{
 		{nil, "$"}, {map[string]any{"info": "text"}, "$['info']['title']"},
+		{map[string]any{"schemas": []any{map[string]any{"title": "ignored"}}}, "$['schemas'][0]"},
 	} {
 		if got := Resolve(tc.doc, tc.path); !got.IsEmpty() {
 			t.Fatalf("invalid walk: %+v", got)
@@ -27,12 +28,15 @@ func TestPathBoundaryFallbacks(t *testing.T) {
 }
 
 func TestNamedSchemaAndTagLabels(t *testing.T) {
-	doc := map[string]any{"methods": []any{map[string]any{"name": "ping", "result": map[string]any{"schema": map[string]any{"title": "Pong"}}, "tags": []any{map[string]any{"name": "rpc"}}}}}
+	doc := map[string]any{"methods": []any{map[string]any{"name": "ping", "result": map[string]any{"schema": map[string]any{"title": "Pong"}}, "tags": []any{map[string]any{"name": "rpc"}}, "errors": []any{map[string]any{"code": 1}}}}}
 	if got := Resolve(doc, "$['methods'][0]['result']['schema']"); got.Schema != "Pong" {
 		t.Fatalf("schema title: %+v", got)
 	}
 	if got := Resolve(doc, "$['methods'][0]['tags'][0]"); got.Tag != "rpc" {
 		t.Fatalf("tag: %+v", got)
+	}
+	if got := Resolve(doc, "$['methods'][0]['errors'][0]"); got != (types.PathLabels{Method: "ping", Section: "methods"}) {
+		t.Fatalf("unnamed collection labels: %+v", got)
 	}
 	if _, ok := stringField("text", "name"); ok {
 		t.Fatal("non-object field")

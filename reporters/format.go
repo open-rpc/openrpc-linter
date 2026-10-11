@@ -78,24 +78,29 @@ func formatColumnHeaderRow(pathW int) string {
 // resolveGroup picks the most specific anchor on labels and returns a
 // (kind, name) pair. The kind drives both header rendering and group order.
 func resolveGroup(labels types.PathLabels) (string, string) {
-	if labels.Method != "" {
+	switch {
+	case labels.Method != "":
 		return groupKindMethod, labels.Method
-	}
-	if labels.Section == "components" {
-		if labels.Schema != "" {
-			return groupKindSchema, labels.Schema
-		}
-		if labels.Descriptor != "" {
-			return groupKindDescriptor, labels.Descriptor
-		}
-		if labels.Tag != "" {
-			return groupKindTag, labels.Tag
-		}
-	}
-	if labels.Section != "" {
+	case labels.Section == "components":
+		return componentGroup(labels)
+	case labels.Section != "":
 		return groupKindSection, labels.Section
+	default:
+		return groupKindGeneral, "general"
 	}
-	return groupKindGeneral, "general"
+}
+
+func componentGroup(labels types.PathLabels) (string, string) {
+	switch {
+	case labels.Schema != "":
+		return groupKindSchema, labels.Schema
+	case labels.Descriptor != "":
+		return groupKindDescriptor, labels.Descriptor
+	case labels.Tag != "":
+		return groupKindTag, labels.Tag
+	default:
+		return groupKindSection, "components"
+	}
 }
 
 // formatGroupHeader renders the line printed above each group's rows.

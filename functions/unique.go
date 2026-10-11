@@ -32,11 +32,9 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return nil
 	}
 
+	path := t.PathString()
 	if err := r.ensureScopes(context); err != nil {
-		return []types.RuleFunctionResult{{
-			Message: "unique scope option invalid: " + err.Error(),
-			Path:    resultPath(t.PathString()),
-		}}
+		return ruleFailure("unique scope option invalid: "+err.Error(), path)
 	}
 
 	scopeKey, inScope := r.scopeKeyFor(t)
@@ -46,33 +44,22 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 
 	ignoreMissing, err := uniqueIgnoreMissing(context)
 	if err != nil {
-		return []types.RuleFunctionResult{{
-			Message: err.Error(),
-			Path:    resultPath(t.PathString()),
-		}}
+		return ruleFailure(err.Error(), path)
 	}
-
 	if t.Field != "" && !t.Exists {
 		if ignoreMissing {
 			return nil
 		}
 		value = nil
 	}
-
-	key, display, ok := comparableKey(value)
-	if !ok {
-		return []types.RuleFunctionResult{{
-			Message: "unique value must be primitive",
-			Path:    resultPath(t.PathString()),
-		}}
+	key, display, supported := comparableKey(value)
+	if !supported {
+		return ruleFailure("unique value must be primitive", path)
 	}
 
-	firstPath, duplicate := r.remember(scopeKey, key, t.PathString())
+	firstPath, duplicate := r.remember(scopeKey, key, path)
 	if duplicate {
-		return []types.RuleFunctionResult{{
-			Message: fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath),
-			Path:    resultPath(t.PathString()),
-		}}
+		return ruleFailure(fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath), path)
 	}
 	return nil
 }
@@ -95,11 +82,7 @@ func (r *UniqueRule) remember(scopeKey, key, path string) (string, bool) {
 }
 
 func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
-	if ctx.Rule == nil || ctx.Rule.Then == nil {
-		return true, nil
-	}
-
-	raw, exists := ctx.Rule.Then.FunctionOptions["ignoreMissing"]
+	raw, exists := functionOptions(ctx)["ignoreMissing"]
 	if !exists {
 		return true, nil
 	}
@@ -122,10 +105,7 @@ func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
 }
 
 func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, error) {
-	if ctx.Rule == nil || ctx.Rule.Then == nil {
-		return nil, nil
-	}
-	raw, _ := ctx.Rule.Then.FunctionOptions["scope"].(string)
+	raw, _ := functionOptions(ctx)["scope"].(string)
 	if raw == "" {
 		return nil, nil
 	}
