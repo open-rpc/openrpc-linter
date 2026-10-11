@@ -57,13 +57,16 @@ func (path Path) Friendly() string {
 	}
 	var out []byte
 	for _, selector := range path.selectors {
-		part := friendlySegment(selector, len(out) > 0)
+		part := friendlySegment(selector)
+		if name, named := selector.(spec.Name); named && name != "" && len(out) > 0 {
+			part = "." + part
+		}
 		out = append(out, part...)
 	}
 	return string(out)
 }
 
-func friendlySegment(selector spec.NormalSelector, continuation bool) string {
+func friendlySegment(selector spec.NormalSelector) string {
 	if index, indexed := selector.(spec.Index); indexed {
 		return "[" + strconv.Itoa(int(index)) + "]"
 	}
@@ -71,10 +74,13 @@ func friendlySegment(selector spec.NormalSelector, continuation bool) string {
 	if name == "" {
 		return "['']"
 	}
-	if continuation {
-		return "." + string(name)
-	}
-	return string(name)
+	return escapedName(name)
+}
+
+// escapedName keeps decoded keys printable without adding string delimiters.
+func escapedName(name spec.Name) string {
+	quoted := strconv.Quote(string(name))
+	return quoted[1 : len(quoted)-1]
 }
 
 func (path Path) MethodIndex() int {
