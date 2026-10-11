@@ -32,23 +32,17 @@ type row struct {
 	message    string
 	ruleID     string
 	pathLabels types.PathLabels
-	groupKind  string
+	groupKind  groupKind
 	groupName  string
 }
 
-// groupOrder ranks group kinds for stable rendering: methods first, then
-// components/* (schema, descriptor, tag), then other sections, general last.
-var groupOrder = map[string]int{
-	groupKindMethod:     0,
-	groupKindSchema:     1,
-	groupKindDescriptor: 2,
-	groupKindTag:        3,
-	groupKindSection:    4,
-	groupKindGeneral:    5,
+type groupKey struct {
+	kind groupKind
+	name string
 }
 
 type bucket struct {
-	kind     string
+	kind     groupKind
 	name     string
 	rows     []row
 	methodIx int // smallest methods[N] index across the rows (groupKindMethod only)
@@ -148,10 +142,10 @@ func pendingRow(result types.RuleFunctionResult) pending {
 func groupRows(pendings []pending) []*bucket {
 	// Bucket rows by (kind, name), tracking the smallest method index per
 	// bucket so method groups can be ordered by document position.
-	buckets := make(map[string]*bucket)
+	buckets := make(map[groupKey]*bucket)
 	groups := make([]*bucket, 0)
 	for _, p := range pendings {
-		key := p.row.groupKind + "\x00" + p.row.groupName
+		key := groupKey{kind: p.row.groupKind, name: p.row.groupName}
 		b, ok := buckets[key]
 		if !ok {
 			b = &bucket{kind: p.row.groupKind, name: p.row.groupName, methodIx: -1}
@@ -185,8 +179,8 @@ func (b *bucket) add(p pending) {
 }
 
 func (b *bucket) less(other *bucket) bool {
-	if rank, otherRank := groupOrder[b.kind], groupOrder[other.kind]; rank != otherRank {
-		return rank < otherRank
+	if b.kind != other.kind {
+		return b.kind < other.kind
 	}
 	if b.kind != groupKindMethod {
 		return b.name < other.name

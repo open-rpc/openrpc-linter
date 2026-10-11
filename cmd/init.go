@@ -48,8 +48,8 @@ func RunInit(opts InitOptions) error {
 		return err
 	}
 
-	fmt.Fprintf(opts.Output, "Created %s\n", opts.RulesFile)
-	return nil
+	_, err = fmt.Fprintf(opts.Output, "Created %s\n", opts.RulesFile)
+	return err
 }
 
 var initCmd = &cobra.Command{

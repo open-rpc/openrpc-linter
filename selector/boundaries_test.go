@@ -75,3 +75,18 @@ func TestUnknownCandidateTitleAndEmptyScopes(t *testing.T) {
 		t.Fatalf("empty candidates: %v", got)
 	}
 }
+
+func TestComponentKeyPattern(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		want bool
+	}{
+		{"", false}, {" ", false}, {"🐱", false}, {"é", false},
+		{"Pet", true}, {"0", true}, {"z", true}, {"[", true},
+		{"🐱Pet", true}, {"/", false}, {"{", false},
+	} {
+		if got := matchesPattern("[0-z]+", tc.key); got != tc.want {
+			t.Errorf("component key %q: got %v, want %v", tc.key, got, tc.want)
+		}
+	}
+}

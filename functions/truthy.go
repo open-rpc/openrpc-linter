@@ -15,7 +15,7 @@ func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContex
 	t := context.Target
 	if t != nil {
 		path = t.PathString()
-		if t.Field != "" && !t.Exists {
+		if missingField(t) {
 			return ruleFailure("missing field '"+t.Field+"'", path)
 		}
 	}

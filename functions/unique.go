@@ -42,15 +42,12 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return nil
 	}
 
-	ignoreMissing, err := uniqueIgnoreMissing(context)
+	value, skip, err := uniqueValue(value, context)
 	if err != nil {
 		return ruleFailure(err.Error(), path)
 	}
-	if t.Field != "" && !t.Exists {
-		if ignoreMissing {
-			return nil
-		}
-		value = nil
+	if skip {
+		return nil
 	}
 	key, display, supported := comparableKey(value)
 	if !supported {
@@ -62,6 +59,19 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return ruleFailure(fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath), path)
 	}
 	return nil
+}
+
+// uniqueValue applies the missing-field policy before primitive comparison.
+// It validates the option even for present fields, as RunRule has always done.
+func uniqueValue(value any, context types.RuleFunctionContext) (any, bool, error) {
+	ignoreMissing, err := uniqueIgnoreMissing(context)
+	if err != nil {
+		return nil, false, err
+	}
+	if missingField(context.Target) {
+		return nil, ignoreMissing, nil
+	}
+	return value, false, nil
 }
 
 // remember owns the per-scope first-seen state. It never replaces a first path.

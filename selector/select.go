@@ -51,14 +51,22 @@ func selectSegments(
 	suffix := segments[lastDescendant+1:]
 	descendant := segments[lastDescendant]
 	if len(suffix) == 0 {
-		if field, ok := terminalName(descendant); ok && idx != nil {
-			return descendantFieldTargets(prefix, field, current, idx)
-		}
-		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
+		return terminalDescendantTargets(segments, current, idx)
 	}
 	midSegments := slices.Concat(prefix, []*spec.Segment{descendant})
 	midTargets := selectSegments(midSegments, current, idx)
 	return compoundTargets(midTargets, suffix, idx)
+}
+
+// terminalDescendantTargets uses the index for a named field and otherwise
+// leaves descendant evaluation to JSONPath, including wildcards and filters.
+func terminalDescendantTargets(segments []*spec.Segment, current any, idx *Index) []Target {
+	last := len(segments) - 1
+	field, named := terminalName(segments[last])
+	if !named || idx == nil {
+		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
+	}
+	return descendantFieldTargets(segments[:last], field, current, idx)
 }
 
 func lastDescendantIndex(segments []*spec.Segment) int {

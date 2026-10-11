@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,5 +85,17 @@ func TestRunInitForceOverwritesExistingRulesFile(t *testing.T) {
 	}
 	if string(content) != basicRulesYAML {
 		t.Fatalf("expected basic rules YAML %q, got %q", basicRulesYAML, string(content))
+	}
+}
+
+func TestRunInitReturnsOutputFailure(t *testing.T) {
+	rulesFile := filepath.Join(t.TempDir(), "rules.yml")
+	want := fmt.Errorf("output unavailable")
+	if err := RunInit(InitOptions{RulesFile: rulesFile, Output: failingWriter{err: want}}); err != want {
+		t.Fatalf("expected write error %v, got %v", want, err)
+	}
+	content, err := os.ReadFile(rulesFile)
+	if err != nil || string(content) != basicRulesYAML {
+		t.Fatalf("rules file must be written before the status output: %q, %v", content, err)
 	}
 }

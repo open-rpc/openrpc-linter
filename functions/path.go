@@ -1,6 +1,17 @@
 package functions
 
-import "github.com/open-rpc/openrpc-linter/types"
+import (
+	"github.com/open-rpc/openrpc-linter/selector"
+	"github.com/open-rpc/openrpc-linter/types"
+)
+
+// missingField distinguishes an absent selected field from a value target.
+func missingField(target *selector.Target) bool {
+	if target == nil {
+		return false
+	}
+	return target.Field != "" && !target.Exists
+}
 
 func resultPath(path string) []string {
 	if path == "" {

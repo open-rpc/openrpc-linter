@@ -14,15 +14,22 @@ const (
 	colRule    = 32
 )
 
-// Group kinds, ordered by render priority (lower first).
+// groupKind fixes render priority in the type rather than a mutable map.
+type groupKind uint8
+
 const (
-	groupKindMethod     = "method"
-	groupKindSchema     = "schema"
-	groupKindDescriptor = "descriptor"
-	groupKindTag        = "tag"
-	groupKindSection    = "section"
-	groupKindGeneral    = "general"
+	groupKindMethod groupKind = iota
+	groupKindSchema
+	groupKindDescriptor
+	groupKindTag
+	groupKindSection
+	groupKindGeneral
+	groupKindParam // secondary label only
 )
+
+func (kind groupKind) label() string {
+	return [...]string{"method", "schema", "descriptor", "tag", "section", "general", "param"}[kind]
+}
 
 func severityLabel(severity types.Severity) string {
 	switch effectiveSeverity(severity) {
@@ -77,7 +84,7 @@ func formatColumnHeaderRow(pathW int) string {
 
 // resolveGroup picks the most specific anchor on labels and returns a
 // (kind, name) pair. The kind drives both header rendering and group order.
-func resolveGroup(labels types.PathLabels) (string, string) {
+func resolveGroup(labels types.PathLabels) (groupKind, string) {
 	switch {
 	case labels.Method != "":
 		return groupKindMethod, labels.Method
@@ -90,7 +97,7 @@ func resolveGroup(labels types.PathLabels) (string, string) {
 	}
 }
 
-func componentGroup(labels types.PathLabels) (string, string) {
+func componentGroup(labels types.PathLabels) (groupKind, string) {
 	switch {
 	case labels.Schema != "":
 		return groupKindSchema, labels.Schema
@@ -106,10 +113,10 @@ func componentGroup(labels types.PathLabels) (string, string) {
 // formatGroupHeader renders the line printed above each group's rows.
 //   - method/section/general → bare name
 //   - schema/descriptor/tag → `<kind> "<name>"`
-func formatGroupHeader(kind, name string) string {
+func formatGroupHeader(kind groupKind, name string) string {
 	switch kind {
 	case groupKindSchema, groupKindDescriptor, groupKindTag:
-		return fmt.Sprintf("%s %q", kind, name)
+		return fmt.Sprintf("%s %q", kind.label(), name)
 	default:
 		return name
 	}
@@ -119,22 +126,22 @@ func formatGroupHeader(kind, name string) string {
 // anchor set on labels that is NOT the row's group key. Example: a row
 // grouped by method "foo" whose schema title is "Bar" yields ["schema: \"Bar\""].
 // Param is always shown when present (since the group is never "param").
-func formatSecondaryLabels(labels types.PathLabels, groupKind string) []string {
+func formatSecondaryLabels(labels types.PathLabels, selectedKind groupKind) []string {
 	anchors := []struct {
-		kind  string
+		kind  groupKind
 		value string
 	}{
-		{"param", labels.Param},
+		{groupKindParam, labels.Param},
 		{groupKindDescriptor, labels.Descriptor},
 		{groupKindSchema, labels.Schema},
 		{groupKindTag, labels.Tag},
 	}
 	var out []string
 	for _, anchor := range anchors {
-		if anchor.value == "" || (anchor.kind != "param" && anchor.kind == groupKind) {
+		if anchor.value == "" || anchor.kind == selectedKind {
 			continue
 		}
-		out = append(out, fmt.Sprintf("%s: %q", anchor.kind, anchor.value))
+		out = append(out, fmt.Sprintf("%s: %q", anchor.kind.label(), anchor.value))
 	}
 	return out
 }

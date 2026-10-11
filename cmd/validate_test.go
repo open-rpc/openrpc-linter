@@ -73,3 +73,16 @@ func minimumOpenRPCDocument(version string) string {
 		"methods": []
 	}`, version)
 }
+
+func TestValidateStopsAfterHeaderWriteFailure(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("openrpc.json", []byte(minimumOpenRPCDocument("1.4.0")), 0600); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Errorf("output unavailable")
+	command := &cobra.Command{}
+	command.SetOut(failingWriter{err: want})
+	if err := runValidate(command, nil); err != want {
+		t.Fatalf("expected header write error %v, got %v", want, err)
+	}
+}

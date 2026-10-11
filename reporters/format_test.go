@@ -44,7 +44,7 @@ func TestResolveGroup(t *testing.T) {
 	cases := []struct {
 		name     string
 		labels   types.PathLabels
-		wantKind string
+		wantKind groupKind
 		wantName string
 	}{
 		{"method wins over nested schema", types.PathLabels{Method: "foo", Schema: "Bar"}, groupKindMethod, "foo"},
@@ -59,7 +59,7 @@ func TestResolveGroup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			kind, name := resolveGroup(tc.labels)
 			if kind != tc.wantKind || name != tc.wantName {
-				t.Fatalf("resolveGroup(%+v) = (%q,%q), want (%q,%q)", tc.labels, kind, name, tc.wantKind, tc.wantName)
+				t.Fatalf("resolveGroup(%+v) = (%v,%q), want (%v,%q)", tc.labels, kind, name, tc.wantKind, tc.wantName)
 			}
 		})
 	}
@@ -67,7 +67,8 @@ func TestResolveGroup(t *testing.T) {
 
 func TestFormatGroupHeader(t *testing.T) {
 	cases := []struct {
-		kind, name, want string
+		kind       groupKind
+		name, want string
 	}{
 		{groupKindMethod, "eth_getLogs", "eth_getLogs"},
 		{groupKindSchema, "Pet", `schema "Pet"`},
@@ -78,7 +79,7 @@ func TestFormatGroupHeader(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := formatGroupHeader(tc.kind, tc.name); got != tc.want {
-			t.Errorf("formatGroupHeader(%q,%q) = %q, want %q", tc.kind, tc.name, got, tc.want)
+			t.Errorf("formatGroupHeader(%v,%q) = %q, want %q", tc.kind, tc.name, got, tc.want)
 		}
 	}
 }
@@ -87,7 +88,7 @@ func TestFormatSecondaryLabels(t *testing.T) {
 	cases := []struct {
 		name      string
 		labels    types.PathLabels
-		groupKind string
+		groupKind groupKind
 		want      []string
 	}{
 		{

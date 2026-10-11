@@ -159,16 +159,16 @@ func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 	return nil
 }
 
-// matchesPattern is a deliberately tiny matcher: we only need to recognize
-// the "^x-" extension pattern that the meta-schema uses. A full regex
-// engine would be overkill and a security liability for a meta-schema that
-// changes once per OpenRPC release.
+// matchesPattern recognizes the two property patterns in the embedded schema.
+// The unanchored component pattern needs at least one character from 0 to z.
 func matchesPattern(pattern, key string) bool {
 	switch pattern {
 	case "^x-":
 		return strings.HasPrefix(key, "x-")
 	case "[0-z]+":
-		return key != ""
+		return strings.IndexFunc(key, func(character rune) bool {
+			return character >= '0' && character <= 'z'
+		}) >= 0
 	}
 	return false
 }
