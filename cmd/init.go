@@ -58,21 +58,25 @@ var initCmd = &cobra.Command{
 	Long:  "Create a basic rules.yml that extends the bundled recommended rules. Defaults to 'rules.yml' if no file is specified.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		rulesFile := "rules.yml"
-		if len(args) > 0 {
-			rulesFile = args[0]
-		}
-
-		opts := InitOptions{
-			RulesFile: rulesFile,
-			Output:    cmd.OutOrStdout(),
-			Force:     initForce,
-		}
-
-		if err := RunInit(opts); err != nil {
-			os.Exit(1)
-		}
+		runInitCommand(cmd, args, os.Exit)
 	},
+}
+
+func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {
+	rulesFile := "rules.yml"
+	if len(args) > 0 {
+		rulesFile = args[0]
+	}
+
+	opts := InitOptions{
+		RulesFile: rulesFile,
+		Output:    cmd.OutOrStdout(),
+		Force:     initForce,
+	}
+
+	if err := RunInit(opts); err != nil {
+		exit(1)
+	}
 }
 
 func init() {

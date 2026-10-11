@@ -164,7 +164,10 @@ func (m *MetaSchema) Resolve(ref string) map[string]any {
 
 // Compile compiles this OpenRPC schema entirely from embedded resources.
 func (m *MetaSchema) Compile() (*jsonschema.Schema, error) {
-	compiler := jsonschema.NewCompiler()
+	return m.compileWith(jsonschema.NewCompiler())
+}
+
+func (m *MetaSchema) compileWith(compiler *jsonschema.Compiler) (*jsonschema.Schema, error) {
 	if err := compiler.AddResource(schemaURL, m.root); err != nil {
 		return nil, err
 	}
