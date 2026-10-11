@@ -41,19 +41,12 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return nil
 	}
 
-	ignoreMissing := true
-	if context.Rule != nil && context.Rule.Then != nil && context.Rule.Then.FunctionOptions != nil {
-		rawIgnoreMissing, exists := context.Rule.Then.FunctionOptions["ignoreMissing"]
-		if exists {
-			parsed, ok := rawIgnoreMissing.(bool)
-			if !ok {
-				return []types.RuleFunctionResult{{
-					Message: "unique function option ignoreMissing must be a boolean",
-					Path:    resultPath(t.PathString()),
-				}}
-			}
-			ignoreMissing = parsed
-		}
+	ignoreMissing, err := uniqueIgnoreMissing(context)
+	if err != nil {
+		return []types.RuleFunctionResult{{
+			Message: err.Error(),
+			Path:    resultPath(t.PathString()),
+		}}
 	}
 
 	if t.Field != "" && !t.Exists {
@@ -87,6 +80,24 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	}
 	bucket[key] = t.PathString()
 	return nil
+}
+
+func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
+	if ctx.Rule == nil || ctx.Rule.Then == nil {
+		return true, nil
+	}
+
+	raw, exists := ctx.Rule.Then.FunctionOptions["ignoreMissing"]
+	if !exists {
+		return true, nil
+	}
+
+	value, ok := raw.(bool)
+	if !ok {
+		return false, fmt.Errorf("unique function option ignoreMissing must be a boolean")
+	}
+
+	return value, nil
 }
 
 func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
