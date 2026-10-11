@@ -99,6 +99,10 @@ func loadLintDocument(path string, output io.Writer) (types.RuleFunctionContext,
 		fmt.Fprintf(output, "Error parsing OpenRPC file: %v\n", err)
 		return types.RuleFunctionContext{}, err
 	}
+	return prepareLintDocument(document, output)
+}
+
+func prepareLintDocument(document interface{}, output io.Writer) (types.RuleFunctionContext, error) {
 	resolved, err := resolveRefs(document)
 	if err != nil {
 		fmt.Fprintf(output, "Error resolving $refs in OpenRPC file: %v\n", err)
@@ -164,9 +168,6 @@ func evaluateLintRule(ruleID string, rule types.Rule, context types.RuleFunction
 		if results[i].RuleID == "" {
 			results[i].RuleID = ruleID
 		}
-		if results[i].Message == "" {
-			continue
-		}
 		results[i].Severity = rule.Severity
 		if rule.Severity == types.SeverityError {
 			errorCount++
@@ -181,22 +182,26 @@ var lintCmd = &cobra.Command{
 	Long:  "Lint an OpenRPC document for compliance with OpenRPC specification",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		openrpcFile := "openrpc.json"
-		if len(args) > 0 {
-			openrpcFile = args[0]
-		}
-
-		opts := LintOptions{
-			OpenRPCFile: openrpcFile,
-			RulesFile:   rulesFile,
-			Output:      cmd.OutOrStdout(),
-			Format:      outputFormat,
-		}
-
-		if err := RunLint(opts); err != nil {
-			os.Exit(1)
-		}
+		runLintCommand(cmd, args, os.Exit)
 	},
+}
+
+func runLintCommand(cmd *cobra.Command, args []string, exit func(int)) {
+	openrpcFile := "openrpc.json"
+	if len(args) > 0 {
+		openrpcFile = args[0]
+	}
+
+	opts := LintOptions{
+		OpenRPCFile: openrpcFile,
+		RulesFile:   rulesFile,
+		Output:      cmd.OutOrStdout(),
+		Format:      outputFormat,
+	}
+
+	if err := RunLint(opts); err != nil {
+		exit(1)
+	}
 }
 
 func init() {
@@ -215,8 +220,12 @@ func resolveRefs(document interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("failed to marshal document: %w", err)
 	}
 
+	return resolveRefsJSON(docBytes, document)
+}
+
+func resolveRefsJSON(docBytes []byte, document interface{}) (interface{}, error) {
 	var resolved interface{}
-	err = json.Unmarshal(docBytes, &resolved)
+	err := json.Unmarshal(docBytes, &resolved)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal document: %w", err)
 	}

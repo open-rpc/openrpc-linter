@@ -12,10 +12,14 @@ import (
 )
 
 func main() {
+	runMain(os.Exit)
+}
+
+func runMain(exit func(int)) {
 	err := run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -72,6 +76,11 @@ func setup() (directory, workspace, bin string, err error) {
 		return
 	}
 	fmt.Println("Eval artifacts:", directory)
+	workspace, bin, err = prepareDirectories(directory)
+	return
+}
+
+func prepareDirectories(directory string) (workspace, bin string, err error) {
 	workspace = filepath.Join(directory, "workspace")
 	bin = filepath.Join(directory, "bin")
 	for _, dir := range []string{workspace, bin} {

@@ -1,6 +1,9 @@
 package metaschema
 
-import "testing"
+import (
+	"github.com/santhosh-tekuri/jsonschema/v6"
+	"testing"
+)
 
 func TestMalformedSchemaBoundaries(t *testing.T) {
 	for _, raw := range []string{"{", "[]"} {
@@ -21,5 +24,16 @@ func TestMalformedSchemaBoundaries(t *testing.T) {
 	m.root = map[string]any{"type": 42}
 	if _, err := m.Compile(); err == nil {
 		t.Fatal("accepted invalid schema")
+	}
+}
+
+func TestCompileRejectsResourceCollision(t *testing.T) {
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(schemaURL, map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	meta := &MetaSchema{root: map[string]any{}}
+	if _, err := meta.compileWith(compiler); err == nil {
+		t.Fatal("expected duplicate resource error")
 	}
 }

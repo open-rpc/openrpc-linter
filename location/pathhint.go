@@ -145,9 +145,6 @@ func FriendlyPath(jsonPath string) string {
 			out = append(out, ']')
 		}
 	}
-	if len(out) == 0 {
-		return jsonPath
-	}
 	return string(out)
 }
 
