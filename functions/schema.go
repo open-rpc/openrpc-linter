@@ -2,14 +2,14 @@ package functions
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/open-rpc/openrpc-linter/types"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+// SchemaRule owns the cache for one execution. ExecuteRule creates an instance
+// per rule and invokes its targets serially; instances must not be shared.
 type SchemaRule struct {
-	mu    sync.Mutex
 	cache map[*types.RuleAction]*jsonschema.Schema
 }
 
@@ -42,8 +42,6 @@ func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContex
 // schemaFor caches one compiled schema per rule action so iterating over N
 // matched nodes doesn't recompile N times.
 func (r *SchemaRule) schemaFor(then *types.RuleAction) (*jsonschema.Schema, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if cached, ok := r.cache[then]; ok {
 		return cached, nil
 	}

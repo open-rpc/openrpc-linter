@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -81,8 +82,7 @@ func TestSchemaRule(t *testing.T) {
 	}
 }
 
-func TestSchemaCacheConcurrent(t *testing.T) {
-	rule := &SchemaRule{}
+func TestSchemaCacheIndependentExecutions(t *testing.T) {
 	action := &types.RuleAction{FunctionOptions: map[string]interface{}{"type": "string"}}
 	type compiled struct {
 		schema *jsonschema.Schema
@@ -91,8 +91,18 @@ func TestSchemaCacheConcurrent(t *testing.T) {
 	results := make(chan compiled, 16)
 	for range cap(results) {
 		go func() {
+			rule := &SchemaRule{}
 			schema, err := rule.schemaFor(action)
-			results <- compiled{schema: schema, err: err}
+			if err != nil {
+				results <- compiled{err: err}
+				return
+			}
+			cached, err := rule.schemaFor(action)
+			if cached != schema {
+				results <- compiled{err: fmt.Errorf("execution did not reuse its schema")}
+				return
+			}
+			results <- compiled{schema: cached, err: err}
 		}()
 	}
 	first := <-results
@@ -101,8 +111,8 @@ func TestSchemaCacheConcurrent(t *testing.T) {
 	}
 	for range cap(results) - 1 {
 		result := <-results
-		if result.err != nil || result.schema != first.schema {
-			t.Fatalf("cache returned a different result: %+v", result)
+		if result.err != nil || result.schema == nil || result.schema == first.schema {
+			t.Fatalf("executions shared a compiled schema: %+v", result)
 		}
 	}
 }
