@@ -143,23 +143,27 @@ func TestSecondaryLabel_AppendsContinuationLine(t *testing.T) {
 
 func TestSecondaryLabel_OmittedWhenSameAsGroup(t *testing.T) {
 	var output bytes.Buffer
-	reporter := &TextReporter{}
-
-	err := reporter.Format([]types.RuleFunctionResult{
-		{
-			RuleID:     "schema-title",
-			Message:    "missing field 'title'",
-			Path:       []string{"$['components']['schemas']['Pet']['title']"},
-			PathLabels: types.PathLabels{Section: "components", Schema: "Pet"},
-			Severity:   types.SeverityWarn,
-		},
-	}, 1, &output)
-	if err != nil {
-		t.Fatalf("Format returned error: %v", err)
+	labels := []types.PathLabels{
+		{Section: "components", Schema: "Shared"},
+		{Section: "components", Descriptor: "Shared"},
+		{Section: "components", Tag: "Shared"},
 	}
-
-	if strings.Contains(output.String(), "schema: \"Pet\"") {
-		t.Fatalf("schema-grouped row must not repeat schema as a continuation line, got:\n%s", output.String())
+	var results []types.RuleFunctionResult
+	for _, label := range labels {
+		results = append(results, types.RuleFunctionResult{
+			RuleID: "description", Message: "missing", PathLabels: label,
+		})
+	}
+	if err := (&TextReporter{}).Format(results, 1, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"schema", "descriptor", "tag"} {
+		if !strings.Contains(output.String(), "\n"+kind+" \"Shared\"\n") {
+			t.Fatalf("missing %s group: %s", kind, output.String())
+		}
+		if strings.Contains(output.String(), kind+": \"Shared\"") {
+			t.Fatalf("%s repeats its primary label: %s", kind, output.String())
+		}
 	}
 }
 

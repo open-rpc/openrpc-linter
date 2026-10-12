@@ -104,6 +104,7 @@ func (b *bucket) methodLess(other *bucket) bool {
 	return b.methodIx < other.methodIx
 }
 
+// render passes the bucket's shared group kind; rows do not store a second copy.
 func (b *bucket) render(layout textLayout) []string {
 	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
 	for _, row := range b.rows {

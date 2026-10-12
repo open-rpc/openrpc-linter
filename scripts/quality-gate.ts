@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     throw new Error("invalid baseline version or Gstyle revision");
   }
   validateCounts(baseline);
-  // Facts retain physical function lengths even when diagnostics are suppressed.
+  // Enforce the 200-code-line cap from facts: suppressed diagnostics omit violations.
   const facts = scan(["check", "--format", "facts", "."]);
   if (facts.schema_version !== 2 || !Array.isArray(facts.functions)) {
     throw new Error("invalid Gstyle facts");

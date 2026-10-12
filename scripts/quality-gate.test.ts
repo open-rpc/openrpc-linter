@@ -43,9 +43,9 @@ test("CLI rejects failed analysis and hard-limit violations", async () => {
     for (const scenario of [
       { code: 1, diagnostics: [], functions: 164, error: "" },
       { code: 2, diagnostics: [], functions: 164, error: "gstyle check failed" },
-      { code: 1, diagnostics: [{ rule_id: "fn_length" }], functions: 164, lines: 201, error: "200-line function limit exceeded" },
       { code: 0, diagnostics: [], functions: 0, error: "invalid functions count" },
       { code: 0, diagnostics: [], functions: 164, lines: 200, error: "" },
+      // Raw length must fail even when the tool emits no diagnostic.
       { code: 0, diagnostics: [], functions: 164, lines: 201, error: "200-line function limit exceeded" },
       { code: 0, diagnostics: [], functions: 164, lines: -1, error: "invalid Gstyle function length" },
     ]) {
