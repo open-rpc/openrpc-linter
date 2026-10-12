@@ -25,6 +25,17 @@ func TestRuleOverrideFields(t *testing.T) {
 	if got := mergeRule(base, types.Rule{}); !reflect.DeepEqual(got, base) {
 		t.Fatalf("empty override: %+v", got)
 	}
+	base.Extends = []types.RuleDefaults{types.RuleExtensionRecommended}
+	partial := types.Rule{Given: "$.override", Extends: []types.RuleDefaults{}}
+	want := base
+	want.Given = partial.Given
+	want.Extends = partial.Extends
+	if got := mergeRule(base, partial); !reflect.DeepEqual(got, want) {
+		t.Fatalf("partial override: %+v, want %+v", got, want)
+	}
+	if got := mergeRule(base, types.Rule{}); !reflect.DeepEqual(got, base) {
+		t.Fatalf("inherited extensions: %+v, want %+v", got, base)
+	}
 	if got := mergeRules(map[string]types.Rule{"r": base}, map[string]types.Rule{"r": override}); !reflect.DeepEqual(got["r"], override) {
 		t.Fatalf("merge: %+v", got)
 	}

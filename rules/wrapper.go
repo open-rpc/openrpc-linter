@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"cmp"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -34,16 +35,17 @@ func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
 
 func mergeRule(base types.Rule, override types.Rule) types.Rule {
 	return types.Rule{
-		Description: preferOverride(base.Description, override.Description, override.Description != ""),
-		Given:       preferOverride(base.Given, override.Given, override.Given != ""),
-		Then:        preferOverride(base.Then, override.Then, override.Then != nil),
-		Extends:     preferOverride(base.Extends, override.Extends, override.Extends != nil),
-		Severity:    preferOverride(base.Severity, override.Severity, override.Severity != ""),
+		Description: cmp.Or(override.Description, base.Description),
+		Given:       cmp.Or(override.Given, base.Given),
+		Then:        cmp.Or(override.Then, base.Then),
+		Extends:     inheritedExtensions(base.Extends, override.Extends),
+		Severity:    cmp.Or(override.Severity, base.Severity),
 	}
 }
 
-func preferOverride[T any](base, override T, present bool) T {
-	if present {
+// inheritedExtensions keeps the base only when the override is absent.
+func inheritedExtensions(base, override any) any {
+	if override != nil {
 		return override
 	}
 	return base
