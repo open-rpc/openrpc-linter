@@ -38,7 +38,7 @@ func TestNamedSchemaAndTagLabels(t *testing.T) {
 	if got := Resolve(doc, "$['methods'][0]['errors'][0]"); got != (types.PathLabels{Method: "ping", Section: "methods"}) {
 		t.Fatalf("unnamed collection labels: %+v", got)
 	}
-	if _, ok := stringField("text", "name"); ok {
+	if got := stringField("text", "name"); got != "" {
 		t.Fatal("non-object field")
 	}
 	if got := FriendlyPath("unknown"); got != "unknown" {

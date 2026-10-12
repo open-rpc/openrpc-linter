@@ -64,7 +64,7 @@ func labelsAtKey(labels types.PathLabels, key, previousKey string, node any) typ
 		labels.Schema = key
 	}
 	if key == "schema" && labels.Method != "" {
-		if title, ok := stringField(node, "title"); ok {
+		if title := stringField(node, "title"); title != "" {
 			labels.Schema = title
 		}
 	}
@@ -76,7 +76,7 @@ func labelsAtIndex(labels types.PathLabels, collection string, node any) types.P
 	if destination == nil {
 		return labels
 	}
-	if name, ok := stringField(node, field); ok {
+	if name := stringField(node, field); name != "" {
 		*destination = name
 	}
 	return labels
@@ -118,8 +118,8 @@ func FriendlyPath(jsonPath string) string {
 	return path.Friendly()
 }
 
-func stringField(node any, field string) (string, bool) {
+func stringField(node any, field string) string {
 	object, _ := node.(map[string]any)
 	value, _ := object[field].(string)
-	return value, value != ""
+	return value
 }

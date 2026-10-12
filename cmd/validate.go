@@ -24,37 +24,44 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("Error reading %s: %w", filename, err)
 	}
-	data, version, meta, err := validationDocument(openrpc)
+	document, err := validationDocument(openrpc)
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Validating OpenRPC document: %s (OpenRPC %s)\n", filename, version); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Validating OpenRPC document: %s (OpenRPC %s)\n", filename, document.version); err != nil {
 		return err
 	}
-	if err := validateDocument(data, meta); err != nil {
+	if err := validateDocument(document.data, document.meta); err != nil {
 		return err
 	}
 	_, writeErr := fmt.Fprintln(cmd.OutOrStdout(), "✅ OpenRPC document is valid!")
 	return writeErr
 }
 
+// validationInput keeps a document and its selected schema family together.
+type validationInput struct {
+	data    any
+	version string
+	meta    *metaschema.MetaSchema
+}
+
 // validationDocument selects the schema from the document's declared version.
-func validationDocument(openrpc []byte) (any, string, *metaschema.MetaSchema, error) {
+func validationDocument(openrpc []byte) (*validationInput, error) {
 	data, parseErr := jsonschema.UnmarshalJSON(bytes.NewReader(openrpc))
 	if parseErr != nil {
-		return nil, "", nil, fmt.Errorf("Error parsing JSON: %w", parseErr)
+		return nil, fmt.Errorf("Error parsing JSON: %w", parseErr)
 	}
 
 	version, versionErr := metaschema.Version(data)
 	if versionErr != nil {
-		return nil, "", nil, fmt.Errorf("Error getting OpenRPC version: %w", versionErr)
+		return nil, fmt.Errorf("Error getting OpenRPC version: %w", versionErr)
 	}
 	meta, metaErr := metaschema.ForVersion(version)
 	if metaErr != nil {
-		return nil, "", nil, metaErr
+		return nil, metaErr
 	}
-	return data, version, meta, nil
+	return &validationInput{data: data, version: version, meta: meta}, nil
 }
 
 // validateDocument keeps schema compilation and validation errors distinct.

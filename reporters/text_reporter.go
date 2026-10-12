@@ -33,8 +33,7 @@ type row struct {
 	message    string
 	ruleID     string
 	pathLabels types.PathLabels
-	groupKind  groupKind
-	groupName  string
+	methodIdx  int
 }
 
 type groupKey struct {
@@ -43,15 +42,9 @@ type groupKey struct {
 }
 
 type bucket struct {
-	kind     groupKind
-	name     string
+	groupKey
 	rows     []row
 	methodIx int // smallest methods[N] index across the rows (groupKindMethod only)
-}
-
-type pending struct {
-	row       row
-	methodIdx int
 }
 
 // textLayout carries the shared column width and color policy for one report.
@@ -61,20 +54,20 @@ type textLayout struct {
 }
 
 func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
-	pendings, summary := collectRows(results)
-	if len(pendings) == 0 {
+	rows, summary := collectRows(results)
+	if len(rows) == 0 {
 		return writeChunks(output, []string{fmt.Sprintf("All %d rules passed\n", totalRules)})
 	}
-	chunks := violationReport(pendings, summary, r.SourceFile, supportsColor(output))
+	chunks := violationReport(rows, summary, r.SourceFile, supportsColor(output))
 	return writeChunks(output, chunks)
 }
 
 // violationReport builds report text without touching the destination writer.
 // Each chunk preserves one existing output boundary and its byte order.
-func violationReport(pendings []pending, summary, source string, colorEnabled bool) []string {
-	layout := textLayout{pathWidth: pathColumnWidth(pendings), color: colorEnabled}
+func violationReport(rows []row, summary, source string, colorEnabled bool) []string {
+	layout := textLayout{pathWidth: pathColumnWidth(rows), color: colorEnabled}
 	var body []string
-	for _, group := range groupRows(pendings) {
+	for _, group := range groupRows(rows) {
 		body = append(body, group.render(layout)...)
 	}
 	return slices.Concat(reportHeader(source, summary, layout.pathWidth), body, []string{"\n" + summary + "\n"})
@@ -114,8 +107,8 @@ func severityIndex(severity types.Severity) int {
 	}
 }
 
-func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
-	pendings := make([]pending, 0, len(results))
+func collectRows(results []types.RuleFunctionResult) ([]row, string) {
+	rows := make([]row, 0, len(results))
 	counts := [3]int{}
 	rules := make(map[string]struct{})
 	for _, result := range results {
@@ -124,12 +117,12 @@ func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
 		}
 		counts[severityIndex(result.Severity)]++
 		rules[result.RuleID] = struct{}{}
-		pendings = append(pendings, pendingRow(result))
+		rows = append(rows, resultRow(result))
 	}
-	return pendings, formatViolationSummary(counts[0], counts[1], counts[2], len(rules))
+	return rows, formatViolationSummary(counts[0], counts[1], counts[2], len(rules))
 }
 
-func pendingRow(result types.RuleFunctionResult) pending {
+func resultRow(result types.RuleFunctionResult) row {
 	path := ""
 	methodIndex := -1
 	if len(result.Path) > 0 {
@@ -137,26 +130,22 @@ func pendingRow(result types.RuleFunctionResult) pending {
 		path = truncate(position.Friendly(), colPath)
 		methodIndex = position.MethodIndex()
 	}
-	kind, name := resolveGroup(result.PathLabels)
-	return pending{
-		row: row{
-			path:       path,
-			severity:   result.Severity,
-			message:    truncate(result.Message, colMessage),
-			ruleID:     truncate(result.RuleID, colRule),
-			pathLabels: result.PathLabels,
-			groupKind:  kind,
-			groupName:  name,
-		},
-		methodIdx: methodIndex,
+	return row{
+		path:       path,
+		severity:   result.Severity,
+		message:    truncate(result.Message, colMessage),
+		ruleID:     truncate(result.RuleID, colRule),
+		pathLabels: result.PathLabels,
+		methodIdx:  methodIndex,
 	}
 }
 
 // groupRows owns the grouping table. Buckets are complete before publication.
-func groupRows(pendings []pending) []*bucket {
-	members := make(map[groupKey][]pending)
-	for _, p := range pendings {
-		key := groupKey{kind: p.row.groupKind, name: p.row.groupName}
+func groupRows(rows []row) []*bucket {
+	members := make(map[groupKey][]row)
+	for _, p := range rows {
+		kind, name := resolveGroup(p.pathLabels)
+		key := groupKey{kind: kind, name: name}
 		members[key] = append(members[key], p)
 	}
 	groups := make([]*bucket, 0, len(members))
@@ -168,17 +157,15 @@ func groupRows(pendings []pending) []*bucket {
 }
 
 // bucketFor derives method position and row order from owned members.
-func bucketFor(key groupKey, members []pending) *bucket {
-	rows := make([]row, len(members))
+func bucketFor(key groupKey, members []row) *bucket {
 	methodIndex := -1
-	for i, member := range members {
-		rows[i] = member.row
+	for _, member := range members {
 		if member.methodIdx >= 0 && (methodIndex < 0 || member.methodIdx < methodIndex) {
 			methodIndex = member.methodIdx
 		}
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].less(rows[j]) })
-	return &bucket{kind: key.kind, name: key.name, rows: rows, methodIx: methodIndex}
+	sort.SliceStable(members, func(i, j int) bool { return members[i].less(members[j]) })
+	return &bucket{groupKey: key, rows: members, methodIx: methodIndex}
 }
 
 func (r row) less(other row) bool {
@@ -215,11 +202,11 @@ func (b *bucket) methodLess(other *bucket) bool {
 	return b.methodIx < other.methodIx
 }
 
-func pathColumnWidth(pendings []pending) int {
+func pathColumnWidth(rows []row) int {
 	// Compute path column width across ALL rows so every group lines up.
-	allPaths := make([]string, 0, len(pendings))
-	for _, p := range pendings {
-		allPaths = append(allPaths, p.row.path)
+	allPaths := make([]string, 0, len(rows))
+	for _, p := range rows {
+		allPaths = append(allPaths, p.path)
 	}
 	pathW := colWidth(allPaths, colPath)
 	// Header word "path" is 4 chars; never shrink below that or the header
@@ -234,14 +221,14 @@ func pathColumnWidth(pendings []pending) int {
 func (b *bucket) render(layout textLayout) []string {
 	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
 	for _, row := range b.rows {
-		chunks = append(chunks, row.render(layout)...)
+		chunks = append(chunks, row.render(layout, b.kind)...)
 	}
 	return chunks
 }
 
 // render keeps a row and its continuation labels together.
-func (r row) render(layout textLayout) []string {
-	secondary := formatSecondaryLabels(r.pathLabels, r.groupKind)
+func (r row) render(layout textLayout, kind groupKind) []string {
+	secondary := formatSecondaryLabels(r.pathLabels, kind)
 	chunks := make([]string, len(secondary)+1)
 	chunks[0] = r.formattedLine(layout)
 	for i, label := range secondary {

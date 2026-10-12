@@ -65,10 +65,10 @@ func TestSecondaryDescriptorAndOverflowIndex(t *testing.T) {
 }
 
 func TestStableGroupedRows(t *testing.T) {
-	rows := []pending{
-		{row: row{groupKind: groupKindMethod, groupName: "b", path: "same", ruleID: "r", message: "z"}, methodIdx: 2},
-		{row: row{groupKind: groupKindMethod, groupName: "b", path: "same", ruleID: "r", message: "a"}, methodIdx: 1},
-		{row: row{groupKind: groupKindMethod, groupName: "b", path: "same", ruleID: "a", message: "x"}, methodIdx: 1},
+	rows := []row{
+		{pathLabels: types.PathLabels{Method: "b"}, path: "same", ruleID: "r", message: "z", methodIdx: 2},
+		{pathLabels: types.PathLabels{Method: "b"}, path: "same", ruleID: "r", message: "a", methodIdx: 1},
+		{pathLabels: types.PathLabels{Method: "b"}, path: "same", ruleID: "a", message: "x", methodIdx: 1},
 	}
 	groups := groupRows(rows)
 	if len(groups) != 1 || groups[0].methodIx != 1 {
@@ -77,16 +77,16 @@ func TestStableGroupedRows(t *testing.T) {
 	if got := groups[0].rows; got[0].ruleID != "a" || got[1].message != "a" || got[2].message != "z" {
 		t.Fatalf("row order: %+v", got)
 	}
-	components := groupRows([]pending{{row: row{groupKind: groupKindSchema, groupName: "Zulu"}}, {row: row{groupKind: groupKindSchema, groupName: "Alpha"}}})
+	components := groupRows([]row{{pathLabels: types.PathLabels{Section: "components", Schema: "Zulu"}}, {pathLabels: types.PathLabels{Section: "components", Schema: "Alpha"}}})
 	if len(components) != 2 || components[0].name != "Alpha" || components[1].name != "Zulu" {
 		t.Fatalf("component groups must sort by name: %+v", components)
 	}
-	known := &bucket{kind: groupKindMethod, name: "z", methodIx: 1}
-	unknown := &bucket{kind: groupKindMethod, name: "a", methodIx: -1}
+	known := &bucket{groupKey: groupKey{kind: groupKindMethod, name: "z"}, methodIx: 1}
+	unknown := &bucket{groupKey: groupKey{kind: groupKindMethod, name: "a"}, methodIx: -1}
 	if !known.less(unknown) || unknown.less(known) {
 		t.Fatal("indexed methods must precede unknown methods")
 	}
-	equal := &bucket{kind: groupKindMethod, name: "a", methodIx: 1}
+	equal := &bucket{groupKey: groupKey{kind: groupKindMethod, name: "a"}, methodIx: 1}
 	if !equal.less(known) {
 		t.Fatal("equal method indexes must sort by name")
 	}
@@ -105,9 +105,9 @@ func TestForcedColorAndSecondarySchema(t *testing.T) {
 	if got := formatSecondaryLabels(types.PathLabels{Schema: "Result"}, groupKindMethod); !reflect.DeepEqual(got, []string{`schema: "Result"`}) {
 		t.Fatalf("schema label: %v", got)
 	}
-	groups := groupRows([]pending{
-		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "same", ruleID: "z"}, methodIdx: -1},
-		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "same", ruleID: "a"}, methodIdx: -1},
+	groups := groupRows([]row{
+		{path: "same", ruleID: "z", methodIdx: -1},
+		{path: "same", ruleID: "a", methodIdx: -1},
 	})
 	if groups[0].rows[0].ruleID != "a" {
 		t.Fatal("rule order")
@@ -118,9 +118,9 @@ func TestTagLabelAndPathOrdering(t *testing.T) {
 	if got := formatSecondaryLabels(types.PathLabels{Tag: "rpc"}, groupKindMethod); !reflect.DeepEqual(got, []string{`tag: "rpc"`}) {
 		t.Fatalf("tag label: %v", got)
 	}
-	groups := groupRows([]pending{
-		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "z"}, methodIdx: -1},
-		{row: row{groupKind: groupKindGeneral, groupName: "general", path: "a"}, methodIdx: -1},
+	groups := groupRows([]row{
+		{path: "z", methodIdx: -1},
+		{path: "a", methodIdx: -1},
 	})
 	if groups[0].rows[0].path != "a" {
 		t.Fatal("path order")
