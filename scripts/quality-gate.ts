@@ -1,7 +1,7 @@
 import { spawnSync } from "bun";
 
 export type Counts = { functions: number; quality: number; patterns: number };
-type Baseline = Counts & { version: 1; cyclo_version: string };
+type Baseline = Counts & { version: 1; gstyle_version: string };
 
 export function checkRates(current: Counts, baseline: Counts): string[] {
   const failures: string[] = [];
@@ -22,10 +22,10 @@ export function validateCounts(counts: Counts): void {
 }
 
 function scan(command: string[]): any {
-  const result = spawnSync([process.env.CYCLO ?? "cyclo", ...command], { stdout: "pipe", stderr: "pipe" });
+  const result = spawnSync([process.env.GSTYLE ?? "gstyle", ...command], { stdout: "pipe", stderr: "pipe" });
   // check exits 1 for findings; an analysis failure is never a passing scan.
   if (result.exitCode !== 0 && !(command[0] === "check" && command.includes("json") && result.exitCode === 1)) {
-    throw new Error(`cyclo ${command[0]} failed: ${result.stderr.toString()}`);
+    throw new Error(`gstyle ${command[0]} failed: ${result.stderr.toString()}`);
   }
   return JSON.parse(result.stdout.toString());
 }
@@ -33,18 +33,18 @@ function scan(command: string[]): any {
 async function main(): Promise<void> {
   const baselineFile = Bun.file("quality-baseline.json");
   const baseline: Baseline = await baselineFile.json();
-  if (baseline.version !== 1 || !/^[a-f0-9]{40}$/.test(baseline.cyclo_version)) {
-    throw new Error("invalid baseline version or Cyclo revision");
+  if (baseline.version !== 1 || !/^[a-f0-9]{40}$/.test(baseline.gstyle_version)) {
+    throw new Error("invalid baseline version or Gstyle revision");
   }
   validateCounts(baseline);
   // Facts retain physical function lengths even when diagnostics are suppressed.
   const facts = scan(["check", "--format", "facts", "."]);
   if (facts.schema_version !== 2 || !Array.isArray(facts.functions)) {
-    throw new Error("invalid Cyclo facts");
+    throw new Error("invalid Gstyle facts");
   }
   for (const fn of facts.functions) {
     if (!Number.isSafeInteger(fn.code_lines) || fn.code_lines < 0) {
-      throw new Error("invalid Cyclo function length");
+      throw new Error("invalid Gstyle function length");
     }
     if (fn.code_lines > 200) {
       throw new Error("200-line function limit exceeded");
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const quality = scan(["check", "--format", "json", "."]);
   const patterns = scan(["patterns", "--format", "json", "."]);
   if (quality.schema_version !== 1 || !Array.isArray(quality.diagnostics) || !Array.isArray(patterns.candidates)) {
-    throw new Error("invalid Cyclo report");
+    throw new Error("invalid Gstyle report");
   }
   const current = {
     functions: quality.summary?.functions,

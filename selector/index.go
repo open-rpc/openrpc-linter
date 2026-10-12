@@ -26,21 +26,6 @@ type Index struct {
 	ByPath  map[string]*Candidate
 }
 
-// Build walks doc using meta to classify each object and collect candidates.
-// Assumes $refs are already resolved.
-func Build(doc any, meta *metaschema.MetaSchema) *Index {
-	byField := make(map[string][]*Candidate)
-	byPath := make(map[string]*Candidate)
-	b := &builder{meta: meta, visit: func(candidate *Candidate) {
-		byPath[candidate.Path.String()] = candidate
-		for field := range candidate.Fields {
-			byField[field] = append(byField[field], candidate)
-		}
-	}}
-	b.walk(doc, meta.Root(), spec.NormalizedPath{})
-	return &Index{ByField: byField, ByPath: byPath}
-}
-
 // builder visits recognized objects. Only Build owns the index lookup tables.
 type builder struct {
 	meta  *metaschema.MetaSchema
@@ -87,25 +72,6 @@ func (b *builder) indexObject(obj map[string]any, schema map[string]any, path sp
 			continue
 		}
 		b.walk(child, childSchema, append(path, spec.Name(key)))
-	}
-}
-
-// objectCandidate constructs the field description for a recognized object.
-// A schema with no named properties contributes no candidate.
-func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
-	properties := schemaValue[map[string]any](schema["properties"])
-	if len(properties) == 0 {
-		return nil
-	}
-	fields := make(map[string]struct{}, len(properties))
-	for field := range properties {
-		fields[field] = struct{}{}
-	}
-	return &Candidate{
-		Path:        append(spec.NormalizedPath{}, path...),
-		Node:        obj,
-		SchemaTitle: schemaValue[string](schema["title"]),
-		Fields:      fields,
 	}
 }
 
@@ -158,6 +124,40 @@ func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 		return resolved
 	}
 	return nil
+}
+
+// Build walks doc using meta to classify each object and collect candidates.
+// Assumes $refs are already resolved.
+func Build(doc any, meta *metaschema.MetaSchema) *Index {
+	byField := make(map[string][]*Candidate)
+	byPath := make(map[string]*Candidate)
+	b := &builder{meta: meta, visit: func(candidate *Candidate) {
+		byPath[candidate.Path.String()] = candidate
+		for field := range candidate.Fields {
+			byField[field] = append(byField[field], candidate)
+		}
+	}}
+	b.walk(doc, meta.Root(), spec.NormalizedPath{})
+	return &Index{ByField: byField, ByPath: byPath}
+}
+
+// objectCandidate constructs the field description for a recognized object.
+// A schema with no named properties contributes no candidate.
+func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
+	properties := schemaValue[map[string]any](schema["properties"])
+	if len(properties) == 0 {
+		return nil
+	}
+	fields := make(map[string]struct{}, len(properties))
+	for field := range properties {
+		fields[field] = struct{}{}
+	}
+	return &Candidate{
+		Path:        append(spec.NormalizedPath{}, path...),
+		Node:        obj,
+		SchemaTitle: schemaValue[string](schema["title"]),
+		Fields:      fields,
+	}
 }
 
 // matchesPattern recognizes the two property patterns in the embedded schema.

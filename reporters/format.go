@@ -16,6 +16,10 @@ const (
 // groupKind fixes render priority in the type rather than a mutable map.
 type groupKind uint8
 
+func (kind groupKind) label() string {
+	return [...]string{"method", "schema", "descriptor", "tag", "section", "general", "param"}[kind]
+}
+
 const (
 	groupKindMethod groupKind = iota
 	groupKindSchema
@@ -25,10 +29,6 @@ const (
 	groupKindGeneral
 	groupKindParam // secondary label only
 )
-
-func (kind groupKind) label() string {
-	return [...]string{"method", "schema", "descriptor", "tag", "section", "general", "param"}[kind]
-}
 
 func severityLabel(severity types.Severity) string {
 	switch effectiveSeverity(severity) {

@@ -12,18 +12,6 @@ import (
 	"strings"
 )
 
-func main() {
-	runMain(os.Exit)
-}
-
-func runMain(exit func(int)) {
-	err := run()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		exit(1)
-	}
-}
-
 // executionEnvironment keeps the working directory and executable search path
 // together for all commands in one evaluation workspace.
 type executionEnvironment struct {
@@ -37,6 +25,30 @@ func (e executionEnvironment) command(input string, args ...string) ([]byte, err
 	cmd.Env = append(os.Environ(), "PATH="+e.bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	cmd.Stdin = strings.NewReader(input)
 	return cmd.CombinedOutput()
+}
+
+func (e executionEnvironment) loggedCommand(input, logPath, label string, args ...string) error {
+	output, commandErr := e.command(input, args...)
+	err := os.WriteFile(logPath, output, 0600)
+	if err != nil {
+		return err
+	}
+	if commandErr != nil {
+		return fmt.Errorf("%s: %w; see %s", label, commandErr, filepath.Base(logPath))
+	}
+	return nil
+}
+
+func main() {
+	runMain(os.Exit)
+}
+
+func runMain(exit func(int)) {
+	err := run()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		exit(1)
+	}
 }
 
 func run() error {
@@ -117,18 +129,6 @@ func runAgent(environment executionEnvironment, directory, prompt string) error 
 		args = []string{"codex", "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "workspace-write", "-"}
 	}
 	return environment.loggedCommand(prompt, filepath.Join(directory, "agent.log"), "agent", args...)
-}
-
-func (e executionEnvironment) loggedCommand(input, logPath, label string, args ...string) error {
-	output, commandErr := e.command(input, args...)
-	err := os.WriteFile(logPath, output, 0600)
-	if err != nil {
-		return err
-	}
-	if commandErr != nil {
-		return fmt.Errorf("%s: %w; see %s", label, commandErr, filepath.Base(logPath))
-	}
-	return nil
 }
 
 func preparePrompt(environment executionEnvironment, directory, binary string) (string, error) {

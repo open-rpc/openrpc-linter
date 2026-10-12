@@ -16,6 +16,39 @@ type Path struct {
 	selectors spec.NormalizedPath
 }
 
+// Selectors returns a read-only view used by the document label resolver.
+func (path Path) Selectors() spec.NormalizedPath {
+	return path.selectors
+}
+
+func (path Path) Friendly() string {
+	if len(path.selectors) == 0 {
+		return path.source
+	}
+	var out []byte
+	for _, selector := range path.selectors {
+		part := friendlySegment(selector)
+		if name, named := selector.(spec.Name); named && name != "" && len(out) > 0 {
+			part = "." + part
+		}
+		out = append(out, part...)
+	}
+	return string(out)
+}
+
+func (path Path) MethodIndex() int {
+	for i := 0; i+1 < len(path.selectors); i++ {
+		name, named := path.selectors[i].(spec.Name)
+		if !named || name != "methods" {
+			continue
+		}
+		if index, indexed := path.selectors[i+1].(spec.Index); indexed {
+			return int(index)
+		}
+	}
+	return -1
+}
+
 // Parse accepts only concrete names and nonnegative indexes. Relative bracket
 // notation is accepted for existing display callers. Queries are not locations.
 func Parse(path string) (Path, bool) {
@@ -46,26 +79,6 @@ func Parse(path string) (Path, bool) {
 	return result, true
 }
 
-// Selectors returns a read-only view used by the document label resolver.
-func (path Path) Selectors() spec.NormalizedPath {
-	return path.selectors
-}
-
-func (path Path) Friendly() string {
-	if len(path.selectors) == 0 {
-		return path.source
-	}
-	var out []byte
-	for _, selector := range path.selectors {
-		part := friendlySegment(selector)
-		if name, named := selector.(spec.Name); named && name != "" && len(out) > 0 {
-			part = "." + part
-		}
-		out = append(out, part...)
-	}
-	return string(out)
-}
-
 func friendlySegment(selector spec.NormalSelector) string {
 	if index, indexed := selector.(spec.Index); indexed {
 		return "[" + index.String() + "]"
@@ -81,17 +94,4 @@ func friendlySegment(selector spec.NormalSelector) string {
 func escapedName(name spec.Name) string {
 	quoted := strconv.Quote(string(name))
 	return quoted[1 : len(quoted)-1]
-}
-
-func (path Path) MethodIndex() int {
-	for i := 0; i+1 < len(path.selectors); i++ {
-		name, named := path.selectors[i].(spec.Name)
-		if !named || name != "methods" {
-			continue
-		}
-		if index, indexed := path.selectors[i+1].(spec.Index); indexed {
-			return int(index)
-		}
-	}
-	return -1
 }

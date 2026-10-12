@@ -50,13 +50,13 @@ fmt: ## Format the code
 	go mod tidy
 
 .PHONY: quality-tool quality-gate quality-baseline
-quality-tool: ## Install the pinned Cyclo version for the quality gate
+quality-tool: ## Install the pinned Gstyle version for the quality gate
 	@mkdir -p .tools
-	GOBIN="$(CURDIR)/.tools" GOTOOLCHAIN=go1.27.1 go install github.com/shanejonas/cyclo@$$(bun -p 'JSON.parse(await Bun.file("quality-baseline.json").text()).cyclo_version')
+	GOBIN="$(CURDIR)/.tools" GOTOOLCHAIN=go1.27.1 go install github.com/rstyled/gstyle@$$(bun -p 'JSON.parse(await Bun.file("quality-baseline.json").text()).gstyle_version')
 
 quality-gate: quality-tool ## Check findings per 1000 production functions
 	bun test scripts/quality-gate.test.ts
-	CYCLO="$(CURDIR)/.tools/cyclo" bun scripts/quality-gate.ts
+	GSTYLE="$(CURDIR)/.tools/gstyle" bun scripts/quality-gate.ts
 
 quality-baseline: quality-tool ## Refresh the quality baseline for review
-	CYCLO="$(CURDIR)/.tools/cyclo" bun scripts/quality-gate.ts --write
+	GSTYLE="$(CURDIR)/.tools/gstyle" bun scripts/quality-gate.ts --write

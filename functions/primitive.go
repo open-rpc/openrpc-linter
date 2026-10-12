@@ -18,6 +18,17 @@ type primitiveKey struct {
 	value string
 }
 
+func (key primitiveKey) display() string {
+	switch key.kind {
+	case primitiveNull:
+		return "null"
+	case primitiveString:
+		return strconv.Quote(key.value)
+	default:
+		return key.value
+	}
+}
+
 func comparableKey(value any) (primitiveKey, bool) {
 	switch value := value.(type) {
 	case nil:
@@ -30,16 +41,5 @@ func comparableKey(value any) (primitiveKey, bool) {
 		return primitiveKey{kind: primitiveNumber, value: strconv.FormatFloat(value, 'g', -1, 64)}, true
 	default:
 		return primitiveKey{}, false
-	}
-}
-
-func (key primitiveKey) display() string {
-	switch key.kind {
-	case primitiveNull:
-		return "null"
-	case primitiveString:
-		return strconv.Quote(key.value)
-	default:
-		return key.value
 	}
 }

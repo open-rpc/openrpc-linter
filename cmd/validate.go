@@ -17,6 +17,13 @@ var validateCmd = &cobra.Command{
 	RunE:  runValidate,
 }
 
+// validationInput keeps a document and its selected schema family together.
+type validationInput struct {
+	data    any
+	version string
+	meta    *metaschema.MetaSchema
+}
+
 func runValidate(cmd *cobra.Command, args []string) error {
 	filename := commandArgument(args, "openrpc.json")
 
@@ -37,13 +44,6 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	}
 	_, writeErr := fmt.Fprintln(cmd.OutOrStdout(), "✅ OpenRPC document is valid!")
 	return writeErr
-}
-
-// validationInput keeps a document and its selected schema family together.
-type validationInput struct {
-	data    any
-	version string
-	meta    *metaschema.MetaSchema
 }
 
 // validationDocument selects the schema from the document's declared version.

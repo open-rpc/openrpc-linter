@@ -6,29 +6,6 @@ import (
 	"slices"
 )
 
-// Select turns a parsed JSONPath query into the uniform []Target stream
-// that rule functions consume. It encapsulates the three modes the
-// linter actually needs:
-//
-//   - value mode: terminal segment is anything but a single name (or path
-//     is empty) — we just hand back the JSONPath-selected nodes.
-//   - parent-field mode: terminal segment is a single .name selector —
-//     we strip it, select parents, and emit a Field target per parent
-//     (Exists=false reports a missing field).
-//   - descendant-field mode (incl. compound) — uses the schema-aware
-//     Index to find candidate parents that may contain the terminal field,
-//     restricted to the scope before the .. segment.
-//
-// The function is intentionally recursive: compound descendants like
-// $..foo.bar fall out as "do the descendant step, then for each result
-// evaluate the remaining segments as a fresh query". No phase pipeline.
-func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
-	if p == nil {
-		return nil
-	}
-	return (selection{segments: p.Query().Segments(), current: doc, index: idx}).targets()
-}
-
 // selection binds a query fragment to its current node and document index.
 // base tracks the current node's document path; returned target paths stay local.
 type selection struct {
@@ -61,15 +38,6 @@ func (s selection) targets() []Target {
 	prefix := s
 	prefix.segments = segments[:lastDescendant+1]
 	return s.compound(prefix.targets(), segments[lastDescendant+1:])
-}
-
-func lastDescendantIndex(segments []*spec.Segment) int {
-	for i, segment := range slices.Backward(segments) {
-		if segment.IsDescendant() {
-			return i
-		}
-	}
-	return -1
 }
 
 // children reports missing named fields and otherwise uses value mode.
@@ -106,6 +74,38 @@ func (s selection) compound(intermediates []Target, suffix []*spec.Segment) []Ta
 		}
 	}
 	return out
+}
+
+// Select turns a parsed JSONPath query into the uniform []Target stream
+// that rule functions consume. It encapsulates the three modes the
+// linter actually needs:
+//
+//   - value mode: terminal segment is anything but a single name (or path
+//     is empty) — we just hand back the JSONPath-selected nodes.
+//   - parent-field mode: terminal segment is a single .name selector —
+//     we strip it, select parents, and emit a Field target per parent
+//     (Exists=false reports a missing field).
+//   - descendant-field mode (incl. compound) — uses the schema-aware
+//     Index to find candidate parents that may contain the terminal field,
+//     restricted to the scope before the .. segment.
+//
+// The function is intentionally recursive: compound descendants like
+// $..foo.bar fall out as "do the descendant step, then for each result
+// evaluate the remaining segments as a fresh query". No phase pipeline.
+func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
+	if p == nil {
+		return nil
+	}
+	return (selection{segments: p.Query().Segments(), current: doc, index: idx}).targets()
+}
+
+func lastDescendantIndex(segments []*spec.Segment) int {
+	for i, segment := range slices.Backward(segments) {
+		if segment.IsDescendant() {
+			return i
+		}
+	}
+	return -1
 }
 
 // descendantFieldTargets implements the schema-aware step: take the scope

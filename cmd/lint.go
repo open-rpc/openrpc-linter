@@ -29,6 +29,16 @@ type LintOptions struct {
 	Format      string
 }
 
+var lintCmd = &cobra.Command{
+	Use:   "lint [openrpc-file]",
+	Short: "Lint an OpenRPC document",
+	Long:  "Lint an OpenRPC document for compliance with OpenRPC specification",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runLintCommand(cmd, args, os.Exit)
+	},
+}
+
 func GetReporter(format string) reporters.Reporter {
 	switch format {
 	case "json":
@@ -163,16 +173,6 @@ func evaluateLintRule(ruleID string, rule types.Rule, context types.RuleFunction
 		}
 	}
 	return results, errorCount
-}
-
-var lintCmd = &cobra.Command{
-	Use:   "lint [openrpc-file]",
-	Short: "Lint an OpenRPC document",
-	Long:  "Lint an OpenRPC document for compliance with OpenRPC specification",
-	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		runLintCommand(cmd, args, os.Exit)
-	},
 }
 
 func runLintCommand(cmd *cobra.Command, args []string, exit func(int)) {

@@ -16,18 +16,6 @@ type UniqueRule struct {
 	scope *uniqueScope
 }
 
-type uniqueScope struct {
-	paths []spec.NormalizedPath
-	err   error
-	seen  map[scopedValue]string
-}
-
-// scopedValue makes scope and primitive identity one collision-safe map key.
-type scopedValue struct {
-	scope string
-	value primitiveKey
-}
-
 func NewUniqueRule() *UniqueRule {
 	return &UniqueRule{}
 }
@@ -66,6 +54,43 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 	return nil
 }
 
+type uniqueScope struct {
+	paths []spec.NormalizedPath
+	err   error
+	seen  map[scopedValue]string
+}
+
+// remember owns the per-scope first-seen state. It never replaces a first path.
+func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (string, bool) {
+	if s.seen == nil {
+		s.seen = make(map[scopedValue]string)
+	}
+	identity := scopedValue{scope: scopeKey, value: key}
+	if firstPath, duplicate := s.seen[identity]; duplicate {
+		return firstPath, true
+	}
+	s.seen[identity] = path
+	return "", false
+}
+
+func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
+	if len(s.paths) == 0 {
+		return globalScopeKey, true
+	}
+	for _, path := range s.paths {
+		if selector.IsUnder(t.Path, path) {
+			return path.String(), true
+		}
+	}
+	return "", false
+}
+
+// scopedValue makes scope and primitive identity one collision-safe map key.
+type scopedValue struct {
+	scope string
+	value primitiveKey
+}
+
 // uniqueCandidate applies presence policy and validates primitive identity.
 func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey, bool, error) {
 	ignoreMissing, err := uniqueIgnoreMissing(context)
@@ -80,19 +105,6 @@ func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey
 		return primitiveKey{}, false, fmt.Errorf("unique value must be primitive")
 	}
 	return key, true, nil
-}
-
-// remember owns the per-scope first-seen state. It never replaces a first path.
-func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (string, bool) {
-	if s.seen == nil {
-		s.seen = make(map[scopedValue]string)
-	}
-	identity := scopedValue{scope: scopeKey, value: key}
-	if firstPath, duplicate := s.seen[identity]; duplicate {
-		return firstPath, true
-	}
-	s.seen[identity] = path
-	return "", false
 }
 
 func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
@@ -129,16 +141,4 @@ func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, err
 	// Most-specific scopes come first. Selection order breaks equal-depth ties.
 	sort.SliceStable(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
 	return paths, nil
-}
-
-func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
-	if len(s.paths) == 0 {
-		return globalScopeKey, true
-	}
-	for _, path := range s.paths {
-		if selector.IsUnder(t.Path, path) {
-			return path.String(), true
-		}
-	}
-	return "", false
 }

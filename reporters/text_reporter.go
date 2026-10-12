@@ -18,11 +18,13 @@ type TextReporter struct {
 	SourceFile string
 }
 
-func effectiveSeverity(severity types.Severity) types.Severity {
-	if severity == "" {
-		return types.SeverityError
+func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
+	rows, summary := collectRows(results)
+	if len(rows) == 0 {
+		return writeChunks(output, []string{fmt.Sprintf("All %d rules passed\n", totalRules)})
 	}
-	return severity
+	chunks := violationReport(rows, summary, r.SourceFile, supportsColor(output))
+	return writeChunks(output, chunks)
 }
 
 // row holds the precomputed cells for one violation so we can size columns
@@ -36,6 +38,37 @@ type row struct {
 	methodIdx  int
 }
 
+func (r row) less(other row) bool {
+	if r.path != other.path {
+		return r.path < other.path
+	}
+	if r.ruleID != other.ruleID {
+		return r.ruleID < other.ruleID
+	}
+	return r.message < other.message
+}
+
+// render keeps a row and its continuation labels together.
+func (r row) render(layout textLayout, kind groupKind) []string {
+	secondary := formatSecondaryLabels(r.pathLabels, kind)
+	chunks := make([]string, len(secondary)+1)
+	chunks[0] = r.formattedLine(layout)
+	for i, label := range secondary {
+		styled := colorize(truncate(label, colMessage), ansiDarkGrey, layout.color)
+		chunks[i+1] = "    " + styled + "\n"
+	}
+	return chunks
+}
+
+// formattedLine owns column styling; the bucket owns row order; the writer owns output errors.
+func (r row) formattedLine(layout textLayout) string {
+	pathCell := styledCell(r.path, layout.pathWidth, ansiDarkGrey, layout.color)
+	severityCell := formatSeverityCol(r.severity, layout.color)
+	messageCell := styledCell(r.message, colMessage, ansiLightGrey, layout.color)
+	ruleCell := colorize(r.ruleID, ansiDarkGrey, layout.color)
+	return formatViolationLine(pathCell, severityCell, messageCell, ruleCell)
+}
+
 type groupKey struct {
 	kind groupKind
 	name string
@@ -47,19 +80,49 @@ type bucket struct {
 	methodIx int // smallest methods[N] index across the rows (groupKindMethod only)
 }
 
+func (b *bucket) less(other *bucket) bool {
+	if b.kind != other.kind {
+		return b.kind < other.kind
+	}
+	if b.kind != groupKindMethod {
+		return b.name < other.name
+	}
+	return b.methodLess(other)
+}
+
+// methodLess puts methods with a document index before methods without one.
+func (b *bucket) methodLess(other *bucket) bool {
+	if b.methodIx == other.methodIx {
+		return b.name < other.name
+	}
+	if b.methodIx < 0 {
+		return false
+	}
+	if other.methodIx < 0 {
+		return true
+	}
+	return b.methodIx < other.methodIx
+}
+
+func (b *bucket) render(layout textLayout) []string {
+	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
+	for _, row := range b.rows {
+		chunks = append(chunks, row.render(layout, b.kind)...)
+	}
+	return chunks
+}
+
 // textLayout carries the shared column width and color policy for one report.
 type textLayout struct {
 	pathWidth int
 	color     bool
 }
 
-func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
-	rows, summary := collectRows(results)
-	if len(rows) == 0 {
-		return writeChunks(output, []string{fmt.Sprintf("All %d rules passed\n", totalRules)})
+func effectiveSeverity(severity types.Severity) types.Severity {
+	if severity == "" {
+		return types.SeverityError
 	}
-	chunks := violationReport(rows, summary, r.SourceFile, supportsColor(output))
-	return writeChunks(output, chunks)
+	return severity
 }
 
 // violationReport builds report text without touching the destination writer.
@@ -168,40 +231,6 @@ func bucketFor(key groupKey, members []row) *bucket {
 	return &bucket{groupKey: key, rows: members, methodIx: methodIndex}
 }
 
-func (r row) less(other row) bool {
-	if r.path != other.path {
-		return r.path < other.path
-	}
-	if r.ruleID != other.ruleID {
-		return r.ruleID < other.ruleID
-	}
-	return r.message < other.message
-}
-
-func (b *bucket) less(other *bucket) bool {
-	if b.kind != other.kind {
-		return b.kind < other.kind
-	}
-	if b.kind != groupKindMethod {
-		return b.name < other.name
-	}
-	return b.methodLess(other)
-}
-
-// methodLess puts methods with a document index before methods without one.
-func (b *bucket) methodLess(other *bucket) bool {
-	if b.methodIx == other.methodIx {
-		return b.name < other.name
-	}
-	if b.methodIx < 0 {
-		return false
-	}
-	if other.methodIx < 0 {
-		return true
-	}
-	return b.methodIx < other.methodIx
-}
-
 func pathColumnWidth(rows []row) int {
 	// Compute path column width across ALL rows so every group lines up.
 	allPaths := make([]string, 0, len(rows))
@@ -216,35 +245,6 @@ func pathColumnWidth(rows []row) int {
 	}
 
 	return pathW
-}
-
-func (b *bucket) render(layout textLayout) []string {
-	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
-	for _, row := range b.rows {
-		chunks = append(chunks, row.render(layout, b.kind)...)
-	}
-	return chunks
-}
-
-// render keeps a row and its continuation labels together.
-func (r row) render(layout textLayout, kind groupKind) []string {
-	secondary := formatSecondaryLabels(r.pathLabels, kind)
-	chunks := make([]string, len(secondary)+1)
-	chunks[0] = r.formattedLine(layout)
-	for i, label := range secondary {
-		styled := colorize(truncate(label, colMessage), ansiDarkGrey, layout.color)
-		chunks[i+1] = "    " + styled + "\n"
-	}
-	return chunks
-}
-
-// formattedLine owns column styling; the bucket owns row order; the writer owns output errors.
-func (r row) formattedLine(layout textLayout) string {
-	pathCell := styledCell(r.path, layout.pathWidth, ansiDarkGrey, layout.color)
-	severityCell := formatSeverityCol(r.severity, layout.color)
-	messageCell := styledCell(r.message, colMessage, ansiLightGrey, layout.color)
-	ruleCell := colorize(r.ruleID, ansiDarkGrey, layout.color)
-	return formatViolationLine(pathCell, severityCell, messageCell, ruleCell)
 }
 
 func formatViolationSummary(errorCount, warnCount, infoCount, rulesWithViolations int) string {

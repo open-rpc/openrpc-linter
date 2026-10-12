@@ -30,6 +30,35 @@ type MetaSchema struct {
 	root          map[string]any
 }
 
+// Root returns the decoded root schema object.
+func (m *MetaSchema) Root() map[string]any {
+	return m.root
+}
+
+// Resolve follows a local "#/definitions/<name>" reference. External
+// references are outside the OpenRPC selector's indexing boundary.
+func (m *MetaSchema) Resolve(ref string) map[string]any {
+	name, local := strings.CutPrefix(ref, "#/definitions/")
+	if !local {
+		return nil
+	}
+	definitions, _ := m.root["definitions"].(map[string]any)
+	target, _ := definitions[name].(map[string]any)
+	return target
+}
+
+// Compile compiles this OpenRPC schema entirely from embedded resources.
+func (m *MetaSchema) Compile() (*jsonschema.Schema, error) {
+	return m.compileWith(jsonschema.NewCompiler())
+}
+
+func (m *MetaSchema) compileWith(compiler *jsonschema.Compiler) (*jsonschema.Schema, error) {
+	if err := compiler.AddResource(schemaURL, m.root); err != nil {
+		return nil, err
+	}
+	return compiler.Compile(schemaURL)
+}
+
 var (
 	loadV13 = sync.OnceValues(func() (*MetaSchema, error) {
 		return parse("1.0.x-1.3.x", v1_3.RawOpenrpcDocument)
@@ -121,33 +150,4 @@ func rewriteJSONSchemaRefs(value any) {
 			rewriteJSONSchemaRefs(child)
 		}
 	}
-}
-
-// Root returns the decoded root schema object.
-func (m *MetaSchema) Root() map[string]any {
-	return m.root
-}
-
-// Resolve follows a local "#/definitions/<name>" reference. External
-// references are outside the OpenRPC selector's indexing boundary.
-func (m *MetaSchema) Resolve(ref string) map[string]any {
-	name, local := strings.CutPrefix(ref, "#/definitions/")
-	if !local {
-		return nil
-	}
-	definitions, _ := m.root["definitions"].(map[string]any)
-	target, _ := definitions[name].(map[string]any)
-	return target
-}
-
-// Compile compiles this OpenRPC schema entirely from embedded resources.
-func (m *MetaSchema) Compile() (*jsonschema.Schema, error) {
-	return m.compileWith(jsonschema.NewCompiler())
-}
-
-func (m *MetaSchema) compileWith(compiler *jsonschema.Compiler) (*jsonschema.Schema, error) {
-	if err := compiler.AddResource(schemaURL, m.root); err != nil {
-		return nil, err
-	}
-	return compiler.Compile(schemaURL)
 }
