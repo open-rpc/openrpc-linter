@@ -47,8 +47,7 @@ type PathLabels struct {
 }
 
 func (l PathLabels) IsEmpty() bool {
-	return l.Method == "" && l.Param == "" && l.Schema == "" &&
-		l.Descriptor == "" && l.Tag == "" && l.Section == ""
+	return l == (PathLabels{})
 }
 
 type RuleFunctionResult struct {

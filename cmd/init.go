@@ -20,6 +20,16 @@ type InitOptions struct {
 	Force     bool
 }
 
+var initCmd = &cobra.Command{
+	Use:   "init [rules-file]",
+	Short: "Create a basic rules.yml",
+	Long:  "Create a basic rules.yml that extends the bundled recommended rules. Defaults to 'rules.yml' if no file is specified.",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runInitCommand(cmd, args, os.Exit)
+	},
+}
+
 func RunInit(opts InitOptions) error {
 	if opts.RulesFile == "" {
 		opts.RulesFile = "rules.yml"
@@ -48,35 +58,18 @@ func RunInit(opts InitOptions) error {
 		return err
 	}
 
-	fmt.Fprintf(opts.Output, "Created %s\n", opts.RulesFile)
-	return nil
-}
-
-var initCmd = &cobra.Command{
-	Use:   "init [rules-file]",
-	Short: "Create a basic rules.yml",
-	Long:  "Create a basic rules.yml that extends the bundled recommended rules. Defaults to 'rules.yml' if no file is specified.",
-	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		runInitCommand(cmd, args, os.Exit)
-	},
+	_, err = fmt.Fprintf(opts.Output, "Created %s\n", opts.RulesFile)
+	return err
 }
 
 func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {
-	rulesFile := "rules.yml"
-	if len(args) > 0 {
-		rulesFile = args[0]
-	}
-
 	opts := InitOptions{
-		RulesFile: rulesFile,
+		RulesFile: commandArgument(args, "rules.yml"),
 		Output:    cmd.OutOrStdout(),
 		Force:     initForce,
 	}
 
-	if err := RunInit(opts); err != nil {
-		exit(1)
-	}
+	execute(func() error { return RunInit(opts) }, exit)
 }
 
 func init() {

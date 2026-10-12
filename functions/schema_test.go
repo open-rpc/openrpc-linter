@@ -1,10 +1,12 @@
 package functions
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/open-rpc/openrpc-linter/types"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestSchemaRule(t *testing.T) {
@@ -77,5 +79,40 @@ func TestSchemaRule(t *testing.T) {
 				t.Fatalf("expected message prefix %q, got %q", tt.expectedResult, results[0].Message)
 			}
 		})
+	}
+}
+
+func TestSchemaCacheIndependentExecutions(t *testing.T) {
+	action := &types.RuleAction{FunctionOptions: map[string]interface{}{"type": "string"}}
+	type compiled struct {
+		schema *jsonschema.Schema
+		err    error
+	}
+	results := make(chan compiled, 16)
+	for range cap(results) {
+		go func() {
+			rule := &SchemaRule{}
+			schema, err := rule.schemaFor(action)
+			if err != nil {
+				results <- compiled{err: err}
+				return
+			}
+			cached, err := rule.schemaFor(action)
+			if cached != schema {
+				results <- compiled{err: fmt.Errorf("execution did not reuse its schema")}
+				return
+			}
+			results <- compiled{schema: cached, err: err}
+		}()
+	}
+	first := <-results
+	if first.err != nil || first.schema == nil {
+		t.Fatalf("first compilation: %+v", first)
+	}
+	for range cap(results) - 1 {
+		result := <-results
+		if result.err != nil || result.schema == nil || result.schema == first.schema {
+			t.Fatalf("executions shared a compiled schema: %+v", result)
+		}
 	}
 }

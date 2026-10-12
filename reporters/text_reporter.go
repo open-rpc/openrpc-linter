@@ -3,10 +3,11 @@ package reporters
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
-	"github.com/open-rpc/openrpc-linter/location"
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
 )
 
@@ -17,11 +18,13 @@ type TextReporter struct {
 	SourceFile string
 }
 
-func effectiveSeverity(severity types.Severity) types.Severity {
-	if severity == "" {
-		return types.SeverityError
+func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
+	rows, summary := collectRows(results)
+	if len(rows) == 0 {
+		return writeChunks(output, []string{fmt.Sprintf("All %d rules passed\n", totalRules)})
 	}
-	return severity
+	chunks := violationReport(rows, summary, r.SourceFile, supportsColor(output))
+	return writeChunks(output, chunks)
 }
 
 // row holds the precomputed cells for one violation so we can size columns
@@ -32,145 +35,64 @@ type row struct {
 	message    string
 	ruleID     string
 	pathLabels types.PathLabels
-	groupKind  string
-	groupName  string
+	methodIdx  int
 }
 
-// groupOrder ranks group kinds for stable rendering: methods first, then
-// components/* (schema, descriptor, tag), then other sections, general last.
-var groupOrder = map[string]int{
-	groupKindMethod:     0,
-	groupKindSchema:     1,
-	groupKindDescriptor: 2,
-	groupKindTag:        3,
-	groupKindSection:    4,
-	groupKindGeneral:    5,
+func (r row) less(other row) bool {
+	if r.path != other.path {
+		return r.path < other.path
+	}
+	if r.ruleID != other.ruleID {
+		return r.ruleID < other.ruleID
+	}
+	return r.message < other.message
+}
+
+// render keeps a row and its continuation labels together.
+func (r row) render(layout textLayout, kind groupKind) []string {
+	secondary := formatSecondaryLabels(r.pathLabels, kind)
+	chunks := make([]string, len(secondary)+1)
+	chunks[0] = r.formattedLine(layout)
+	for i, label := range secondary {
+		styled := colorize(truncate(label, colMessage), ansiDarkGrey, layout.color)
+		chunks[i+1] = "    " + styled + "\n"
+	}
+	return chunks
+}
+
+// formattedLine owns column styling; the bucket owns row order; the writer owns output errors.
+func (r row) formattedLine(layout textLayout) string {
+	pathCell := styledCell(r.path, layout.pathWidth, ansiDarkGrey, layout.color)
+	severityCell := formatSeverityCol(r.severity, layout.color)
+	messageCell := styledCell(r.message, colMessage, ansiLightGrey, layout.color)
+	ruleCell := colorize(r.ruleID, ansiDarkGrey, layout.color)
+	return formatViolationLine(pathCell, severityCell, messageCell, ruleCell)
+}
+
+type groupKey struct {
+	kind groupKind
+	name string
 }
 
 type bucket struct {
-	kind     string
-	name     string
+	groupKey
 	rows     []row
 	methodIx int // smallest methods[N] index across the rows (groupKindMethod only)
 }
 
-type pending struct {
-	row       row
-	methodIdx int
-}
-
-func (r *TextReporter) Format(results []types.RuleFunctionResult, totalRules int, output io.Writer) error {
-	pendings, summary := collectRows(results)
-	if len(pendings) == 0 {
-		_, err := fmt.Fprintf(output, "All %d rules passed\n", totalRules)
-		return err
-	}
-	groups := groupRows(pendings)
-	pathW := pathColumnWidth(pendings)
-	colorEnabled := supportsColor(output)
-	if r.SourceFile != "" {
-		if _, err := fmt.Fprintf(output, "%s\n\n", r.SourceFile); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(output, "%s\n\n", summary); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(output, formatColumnHeaderRow(pathW)); err != nil {
-		return err
-	}
-	for _, group := range groups {
-		if err := group.write(output, pathW, colorEnabled); err != nil {
-			return err
-		}
-	}
-	_, err := fmt.Fprintf(output, "\n%s\n", summary)
-	return err
-}
-
-func collectRows(results []types.RuleFunctionResult) ([]pending, string) {
-	pendings := make([]pending, 0, len(results))
-	errorCount, warnCount, infoCount := 0, 0, 0
-	ruleViolations := make(map[string]struct{})
-
-	for _, res := range results {
-		if res.Message == "" {
-			continue
-		}
-		ruleViolations[res.RuleID] = struct{}{}
-		switch effectiveSeverity(res.Severity) {
-		case types.SeverityWarn:
-			warnCount++
-		case types.SeverityInfo:
-			infoCount++
-		default:
-			errorCount++
-		}
-
-		friendlyPath := ""
-		mIdx := -1
-		if len(res.Path) > 0 {
-			friendlyPath = truncate(location.FriendlyPath(res.Path[0]), colPath)
-			mIdx = methodIndexFromPath(res.Path[0])
-		}
-		kind, name := resolveGroup(res.PathLabels)
-		pendings = append(pendings, pending{
-			row: row{
-				path:       friendlyPath,
-				severity:   res.Severity,
-				message:    truncate(res.Message, colMessage),
-				ruleID:     truncate(res.RuleID, colRule),
-				pathLabels: res.PathLabels,
-				groupKind:  kind,
-				groupName:  name,
-			},
-			methodIdx: mIdx,
-		})
-	}
-
-	return pendings, formatViolationSummary(errorCount, warnCount, infoCount, len(ruleViolations))
-}
-
-func groupRows(pendings []pending) []*bucket {
-	// Bucket rows by (kind, name), tracking the smallest method index per
-	// bucket so method groups can be ordered by document position.
-	buckets := make(map[string]*bucket)
-	groups := make([]*bucket, 0)
-	for _, p := range pendings {
-		key := p.row.groupKind + "\x00" + p.row.groupName
-		b, ok := buckets[key]
-		if !ok {
-			b = &bucket{kind: p.row.groupKind, name: p.row.groupName, methodIx: -1}
-			buckets[key] = b
-			groups = append(groups, b)
-		}
-		b.rows = append(b.rows, p.row)
-		if p.methodIdx >= 0 && (b.methodIx < 0 || p.methodIdx < b.methodIx) {
-			b.methodIx = p.methodIdx
-		}
-	}
-
-	sort.SliceStable(groups, func(i, j int) bool { return groups[i].less(groups[j]) })
-	for _, group := range groups {
-		rows := group.rows
-		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].path != rows[j].path {
-				return rows[i].path < rows[j].path
-			}
-			if rows[i].ruleID != rows[j].ruleID {
-				return rows[i].ruleID < rows[j].ruleID
-			}
-			return rows[i].message < rows[j].message
-		})
-	}
-	return groups
-}
-
 func (b *bucket) less(other *bucket) bool {
-	if rank, otherRank := groupOrder[b.kind], groupOrder[other.kind]; rank != otherRank {
-		return rank < otherRank
+	if b.kind != other.kind {
+		return b.kind < other.kind
 	}
-	if b.kind != groupKindMethod || b.methodIx == other.methodIx {
+	if b.kind != groupKindMethod {
+		return b.name < other.name
+	}
+	return b.methodLess(other)
+}
+
+// methodLess puts methods with a document index before methods without one.
+func (b *bucket) methodLess(other *bucket) bool {
+	if b.methodIx == other.methodIx {
 		return b.name < other.name
 	}
 	if b.methodIx < 0 {
@@ -182,11 +104,139 @@ func (b *bucket) less(other *bucket) bool {
 	return b.methodIx < other.methodIx
 }
 
-func pathColumnWidth(pendings []pending) int {
+// render passes the bucket's shared group kind; rows do not store a second copy.
+func (b *bucket) render(layout textLayout) []string {
+	chunks := []string{"\n" + formatGroupHeader(b.kind, b.name) + "\n"}
+	for _, row := range b.rows {
+		chunks = append(chunks, row.render(layout, b.kind)...)
+	}
+	return chunks
+}
+
+// textLayout carries the shared column width and color policy for one report.
+type textLayout struct {
+	pathWidth int
+	color     bool
+}
+
+func effectiveSeverity(severity types.Severity) types.Severity {
+	if severity == "" {
+		return types.SeverityError
+	}
+	return severity
+}
+
+// violationReport builds report text without touching the destination writer.
+// Each chunk preserves one existing output boundary and its byte order.
+func violationReport(rows []row, summary, source string, colorEnabled bool) []string {
+	layout := textLayout{pathWidth: pathColumnWidth(rows), color: colorEnabled}
+	var body []string
+	for _, group := range groupRows(rows) {
+		body = append(body, group.render(layout)...)
+	}
+	return slices.Concat(reportHeader(source, summary, layout.pathWidth), body, []string{"\n" + summary + "\n"})
+}
+
+func reportHeader(source, summary string, pathW int) []string {
+	header := []string{summary + "\n\n", formatColumnHeaderRow(pathW)}
+	if source == "" {
+		return header
+	}
+	return slices.Concat([]string{source + "\n\n"}, header)
+}
+
+// writeChunks is the report's single output boundary; failures stop all writes.
+func writeChunks(output io.Writer, chunks []string) error {
+	for _, chunk := range chunks {
+		written, err := io.WriteString(output, chunk)
+		if err != nil {
+			return err
+		}
+		if written != len(chunk) {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
+}
+
+// severityIndex shares the default-to-error policy used by report labels.
+func severityIndex(severity types.Severity) int {
+	switch effectiveSeverity(severity) {
+	case types.SeverityWarn:
+		return 1
+	case types.SeverityInfo:
+		return 2
+	default:
+		return 0
+	}
+}
+
+func collectRows(results []types.RuleFunctionResult) ([]row, string) {
+	rows := make([]row, 0, len(results))
+	counts := [3]int{}
+	rules := make(map[string]struct{})
+	for _, result := range results {
+		if result.Message == "" {
+			continue
+		}
+		counts[severityIndex(result.Severity)]++
+		rules[result.RuleID] = struct{}{}
+		rows = append(rows, resultRow(result))
+	}
+	return rows, formatViolationSummary(counts[0], counts[1], counts[2], len(rules))
+}
+
+func resultRow(result types.RuleFunctionResult) row {
+	path := ""
+	methodIndex := -1
+	if len(result.Path) > 0 {
+		position, _ := paths.Parse(result.Path[0])
+		path = truncate(position.Friendly(), colPath)
+		methodIndex = position.MethodIndex()
+	}
+	return row{
+		path:       path,
+		severity:   result.Severity,
+		message:    truncate(result.Message, colMessage),
+		ruleID:     truncate(result.RuleID, colRule),
+		pathLabels: result.PathLabels,
+		methodIdx:  methodIndex,
+	}
+}
+
+// groupRows owns the grouping table. Buckets are complete before publication.
+func groupRows(rows []row) []*bucket {
+	members := make(map[groupKey][]row)
+	for _, p := range rows {
+		kind, name := resolveGroup(p.pathLabels)
+		key := groupKey{kind: kind, name: name}
+		members[key] = append(members[key], p)
+	}
+	groups := make([]*bucket, 0, len(members))
+	for key, rows := range members {
+		groups = append(groups, bucketFor(key, rows))
+	}
+	sort.SliceStable(groups, func(i, j int) bool { return groups[i].less(groups[j]) })
+	return groups
+}
+
+// bucketFor derives method position and row order from owned members.
+func bucketFor(key groupKey, members []row) *bucket {
+	methodIndex := -1
+	for _, member := range members {
+		if member.methodIdx >= 0 && (methodIndex < 0 || member.methodIdx < methodIndex) {
+			methodIndex = member.methodIdx
+		}
+	}
+	sort.SliceStable(members, func(i, j int) bool { return members[i].less(members[j]) })
+	return &bucket{groupKey: key, rows: members, methodIx: methodIndex}
+}
+
+func pathColumnWidth(rows []row) int {
 	// Compute path column width across ALL rows so every group lines up.
-	allPaths := make([]string, 0, len(pendings))
-	for _, p := range pendings {
-		allPaths = append(allPaths, p.row.path)
+	allPaths := make([]string, 0, len(rows))
+	for _, p := range rows {
+		allPaths = append(allPaths, p.path)
 	}
 	pathW := colWidth(allPaths, colPath)
 	// Header word "path" is 4 chars; never shrink below that or the header
@@ -198,38 +248,20 @@ func pathColumnWidth(pendings []pending) int {
 	return pathW
 }
 
-func (b *bucket) write(output io.Writer, pathW int, colorEnabled bool) error {
-	if _, err := fmt.Fprintf(output, "\n%s\n", formatGroupHeader(b.kind, b.name)); err != nil {
-		return err
-	}
-	for _, row := range b.rows {
-		pathCell := styledCell(row.path, pathW, ansiDarkGrey, colorEnabled)
-		sevCell := formatSeverityCol(row.severity, colorEnabled)
-		msgCell := styledCell(row.message, colMessage, ansiLightGrey, colorEnabled)
-		ruleCell := colorize(row.ruleID, ansiDarkGrey, colorEnabled)
-		if _, err := io.WriteString(output, formatViolationLine(pathCell, sevCell, msgCell, ruleCell)); err != nil {
-			return err
-		}
-		for _, sec := range formatSecondaryLabels(row.pathLabels, row.groupKind) {
-			styled := colorize(truncate(sec, colMessage), ansiDarkGrey, colorEnabled)
-			if _, err := fmt.Fprintf(output, "    %s\n", styled); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func formatViolationSummary(errorCount, warnCount, infoCount, rulesWithViolations int) string {
+	counts := []struct {
+		count int
+		label string
+	}{
+		{errorCount, plural(errorCount, "error", "errors")},
+		{warnCount, plural(warnCount, "warning", "warnings")},
+		{infoCount, "info"},
+	}
 	var parts []string
-	if errorCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s", errorCount, plural(errorCount, "error", "errors")))
-	}
-	if warnCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s", warnCount, plural(warnCount, "warning", "warnings")))
-	}
-	if infoCount > 0 {
-		parts = append(parts, fmt.Sprintf("%d info", infoCount))
+	for _, severity := range counts {
+		if severity.count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", severity.count, severity.label))
+		}
 	}
 
 	ruleLabel := "rules"

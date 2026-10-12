@@ -45,7 +45,7 @@ func TestIndexSchemaBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &builder{meta: meta, idx: &Index{ByField: map[string][]*Candidate{}, ByPath: map[string]*Candidate{}}}
+	b := &builder{meta: meta, visit: func(*Candidate) { t.Fatal("boundary produced a candidate") }}
 	b.walk(map[string]any{}, nil, nil)
 	b.walk(map[string]any{}, map[string]any{"$ref": "https://external.example/schema"}, nil)
 	b.indexArray([]any{1}, map[string]any{}, nil)
@@ -68,10 +68,25 @@ func TestIndexSchemaBoundaries(t *testing.T) {
 
 func TestUnknownCandidateTitleAndEmptyScopes(t *testing.T) {
 	idx := &Index{ByPath: map[string]*Candidate{}, ByField: map[string][]*Candidate{}}
-	if got := candidateTitle(idx, nil); got != "" {
+	if got := candidateTitle(idx, nil, nil); got != "" {
 		t.Fatalf("unknown candidate: %q", got)
 	}
 	if got := descendantFieldTargets(nil, "name", nil, idx); len(got) != 0 {
 		t.Fatalf("empty candidates: %v", got)
+	}
+}
+
+func TestComponentKeyPattern(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		want bool
+	}{
+		{"", false}, {" ", false}, {"🐱", false}, {"é", false},
+		{"Pet", true}, {"0", true}, {"z", true}, {"[", true},
+		{"🐱Pet", true}, {"/", false}, {"{", false},
+	} {
+		if got := matchesPattern("[0-z]+", tc.key); got != tc.want {
+			t.Errorf("component key %q: got %v, want %v", tc.key, got, tc.want)
+		}
 	}
 }

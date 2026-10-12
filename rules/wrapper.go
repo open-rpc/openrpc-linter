@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"cmp"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -33,20 +34,19 @@ func (rw *RulesWrapper) ResolvedRules() (map[string]types.Rule, error) {
 }
 
 func mergeRule(base types.Rule, override types.Rule) types.Rule {
-	if override.Description != "" {
-		base.Description = override.Description
+	return types.Rule{
+		Description: cmp.Or(override.Description, base.Description),
+		Given:       cmp.Or(override.Given, base.Given),
+		Then:        cmp.Or(override.Then, base.Then),
+		Extends:     inheritedExtensions(base.Extends, override.Extends),
+		Severity:    cmp.Or(override.Severity, base.Severity),
 	}
-	if override.Given != "" {
-		base.Given = override.Given
-	}
-	if override.Then != nil {
-		base.Then = override.Then
-	}
-	if override.Extends != nil {
-		base.Extends = override.Extends
-	}
-	if override.Severity != "" {
-		base.Severity = override.Severity
+}
+
+// inheritedExtensions keeps the base only when the override is absent.
+func inheritedExtensions(base, override any) any {
+	if override != nil {
+		return override
 	}
 	return base
 }
@@ -82,8 +82,8 @@ func getExtendedRules(exts []types.RuleDefaults) (map[string]types.Rule, error) 
 	return out, nil
 }
 
-func LoadRulesFile(fsys fs.FS, name string) (*RulesWrapper, error) {
-	b, err := fs.ReadFile(fsys, name)
+func LoadRulesFile(fsys fs.FS, filename string) (*RulesWrapper, error) {
+	b, err := fs.ReadFile(fsys, filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading rules file: %v\n", err)
 		return nil, err

@@ -49,4 +49,14 @@ fmt: ## Format the code
 	gofmt -s -w .
 	go mod tidy
 
-## TODO: add coverage ++ get to 100%
+.PHONY: quality-tool quality-gate quality-baseline
+quality-tool: ## Install the pinned Gstyle version for the quality gate
+	@mkdir -p .tools
+	GOBIN="$(CURDIR)/.tools" GOTOOLCHAIN=go1.27.1 go install github.com/rstyled/gstyle@$$(bun -p 'JSON.parse(await Bun.file("quality-baseline.json").text()).gstyle_version')
+
+quality-gate: quality-tool ## Check findings per 1000 production functions
+	bun test ./.github/workflows/quality-gate.test.ts
+	GSTYLE="$(CURDIR)/.tools/gstyle" bun .github/workflows/quality-gate.ts
+
+quality-baseline: quality-tool ## Refresh the quality baseline for review
+	GSTYLE="$(CURDIR)/.tools/gstyle" bun .github/workflows/quality-gate.ts --write

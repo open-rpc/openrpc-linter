@@ -30,24 +30,48 @@ type MetaSchema struct {
 	root          map[string]any
 }
 
-var (
-	v13Once sync.Once
-	v13Meta *MetaSchema
-	v13Err  error
+// Root returns the decoded root schema object.
+func (m *MetaSchema) Root() map[string]any {
+	return m.root
+}
 
-	v14Once sync.Once
-	v14Meta *MetaSchema
-	v14Err  error
+// Resolve follows a local "#/definitions/<name>" reference. External
+// references are outside the OpenRPC selector's indexing boundary.
+func (m *MetaSchema) Resolve(ref string) map[string]any {
+	name, local := strings.CutPrefix(ref, "#/definitions/")
+	if !local {
+		return nil
+	}
+	definitions, _ := m.root["definitions"].(map[string]any)
+	target, _ := definitions[name].(map[string]any)
+	return target
+}
+
+// Compile compiles this OpenRPC schema entirely from embedded resources.
+func (m *MetaSchema) Compile() (*jsonschema.Schema, error) {
+	return m.compileWith(jsonschema.NewCompiler())
+}
+
+func (m *MetaSchema) compileWith(compiler *jsonschema.Compiler) (*jsonschema.Schema, error) {
+	if err := compiler.AddResource(schemaURL, m.root); err != nil {
+		return nil, err
+	}
+	return compiler.Compile(schemaURL)
+}
+
+var (
+	loadV13 = sync.OnceValues(func() (*MetaSchema, error) {
+		return parse("1.0.x-1.3.x", v1_3.RawOpenrpcDocument)
+	})
+	loadV14 = sync.OnceValues(func() (*MetaSchema, error) {
+		return parse("1.4.x", v1_4.RawOpenrpcDocument)
+	})
 )
 
 // For selects the meta-schema matching doc's root openrpc field. A missing or
 // non-string field uses Latest so validation can report the malformed field.
 func For(doc any) (*MetaSchema, error) {
-	root, ok := doc.(map[string]any)
-	if !ok {
-		return Latest()
-	}
-	version, err := Version(root)
+	version, err := Version(doc)
 	if err != nil {
 		return Latest()
 	}
@@ -85,20 +109,6 @@ func Version(doc any) (string, error) {
 // Latest returns the newest meta-schema known to this linter.
 func Latest() (*MetaSchema, error) {
 	return loadV14()
-}
-
-func loadV13() (*MetaSchema, error) {
-	v13Once.Do(func() {
-		v13Meta, v13Err = parse("1.0.x-1.3.x", v1_3.RawOpenrpcDocument)
-	})
-	return v13Meta, v13Err
-}
-
-func loadV14() (*MetaSchema, error) {
-	v14Once.Do(func() {
-		v14Meta, v14Err = parse("1.4.x", v1_4.RawOpenrpcDocument)
-	})
-	return v14Meta, v14Err
 }
 
 func parse(version, raw string) (*MetaSchema, error) {
@@ -140,36 +150,4 @@ func rewriteJSONSchemaRefs(value any) {
 			rewriteJSONSchemaRefs(child)
 		}
 	}
-}
-
-// Root returns the decoded root schema object.
-func (m *MetaSchema) Root() map[string]any {
-	return m.root
-}
-
-// Resolve follows a local "#/definitions/<name>" reference. External
-// references are outside the OpenRPC selector's indexing boundary.
-func (m *MetaSchema) Resolve(ref string) map[string]any {
-	const prefix = "#/definitions/"
-	if !strings.HasPrefix(ref, prefix) {
-		return nil
-	}
-	defs, _ := m.root["definitions"].(map[string]any)
-	if defs == nil {
-		return nil
-	}
-	target, _ := defs[strings.TrimPrefix(ref, prefix)].(map[string]any)
-	return target
-}
-
-// Compile compiles this OpenRPC schema entirely from embedded resources.
-func (m *MetaSchema) Compile() (*jsonschema.Schema, error) {
-	return m.compileWith(jsonschema.NewCompiler())
-}
-
-func (m *MetaSchema) compileWith(compiler *jsonschema.Compiler) (*jsonschema.Schema, error) {
-	if err := compiler.AddResource(schemaURL, m.root); err != nil {
-		return nil, err
-	}
-	return compiler.Compile(schemaURL)
 }

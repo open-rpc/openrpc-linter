@@ -26,21 +26,10 @@ type Index struct {
 	ByPath  map[string]*Candidate
 }
 
-// Build walks doc using meta to classify each object and collect candidates.
-// Assumes $refs are already resolved.
-func Build(doc any, meta *metaschema.MetaSchema) *Index {
-	idx := &Index{
-		ByField: make(map[string][]*Candidate),
-		ByPath:  make(map[string]*Candidate),
-	}
-	b := &builder{meta: meta, idx: idx}
-	b.walk(doc, meta.Root(), spec.NormalizedPath{})
-	return idx
-}
-
+// builder visits recognized objects. Only Build owns the index lookup tables.
 type builder struct {
-	meta *metaschema.MetaSchema
-	idx  *Index
+	meta  *metaschema.MetaSchema
+	visit func(*Candidate)
 }
 
 // walk recurses over (node, schema) in lockstep. node is the document
@@ -69,25 +58,8 @@ func (b *builder) walk(node any, schema map[string]any, path spec.NormalizedPath
 }
 
 func (b *builder) indexObject(obj map[string]any, schema map[string]any, path spec.NormalizedPath) {
-	props := mapOf(schema["properties"])
-
-	// Record this object as a candidate if the schema names at least one
-	// property — otherwise the node is generic (e.g. a JSONSchema we've
-	// declined to index) and has nothing to contribute.
-	if len(props) > 0 {
-		cand := &Candidate{
-			Path:        append(spec.NormalizedPath{}, path...),
-			Node:        obj,
-			SchemaTitle: stringOf(schema["title"]),
-			Fields:      make(map[string]struct{}, len(props)),
-		}
-		for field := range props {
-			cand.Fields[field] = struct{}{}
-		}
-		b.idx.ByPath[cand.Path.String()] = cand
-		for field := range cand.Fields {
-			b.idx.ByField[field] = append(b.idx.ByField[field], cand)
-		}
+	if candidate := objectCandidate(obj, schema, path); candidate != nil {
+		b.visit(candidate)
 	}
 
 	// Recurse into every actual document key whose schema position we can
@@ -104,7 +76,7 @@ func (b *builder) indexObject(obj map[string]any, schema map[string]any, path sp
 }
 
 func (b *builder) indexArray(arr []any, schema map[string]any, path spec.NormalizedPath) {
-	itemSchema := mapOf(schema["items"])
+	itemSchema := schemaValue[map[string]any](schema["items"])
 	if itemSchema == nil {
 		return
 	}
@@ -118,24 +90,16 @@ func (b *builder) indexArray(arr []any, schema map[string]any, path spec.Normali
 // is consulted last. Returns nil for keys the schema doesn't know about
 // (which is normal for "x-" extensions when additionalProperties is false).
 func (b *builder) schemaForKey(schema map[string]any, key string) map[string]any {
-	if props := mapOf(schema["properties"]); props != nil {
-		if direct, ok := props[key]; ok {
-			return mapOf(direct)
+	properties := schemaValue[map[string]any](schema["properties"])
+	if direct, exists := properties[key]; exists {
+		return schemaValue[map[string]any](direct)
+	}
+	for pattern, candidate := range schemaValue[map[string]any](schema["patternProperties"]) {
+		if matchesPattern(pattern, key) {
+			return schemaValue[map[string]any](candidate)
 		}
 	}
-	if patternProps := mapOf(schema["patternProperties"]); patternProps != nil {
-		for pattern, candidate := range patternProps {
-			if matchesPattern(pattern, key) {
-				return mapOf(candidate)
-			}
-		}
-	}
-	if addl, ok := schema["additionalProperties"]; ok {
-		if m, ok := addl.(map[string]any); ok {
-			return m
-		}
-	}
-	return nil
+	return schemaValue[map[string]any](schema["additionalProperties"])
 }
 
 // deref returns the resolved local definition if schema is a {"$ref": "#/definitions/..."}
@@ -152,17 +116,9 @@ func (b *builder) deref(schema map[string]any) map[string]any {
 // chooseOneOf picks the concrete branch from a v1.4-style oneOf. Every
 // oneOf in the meta-schema is [concreteOpenRPCType, referenceObject];
 func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
-	raw, ok := schema["oneOf"].([]any)
-	if !ok {
-		return nil
-	}
-	for _, branch := range raw {
-		m, ok := branch.(map[string]any)
-		if !ok {
-			continue
-		}
-		resolved := b.deref(m)
-		if resolved == nil || stringOf(resolved["title"]) == "referenceObject" {
+	for _, branch := range schemaValue[[]any](schema["oneOf"]) {
+		resolved := b.deref(schemaValue[map[string]any](branch))
+		if resolved == nil || schemaValue[string](resolved["title"]) == "referenceObject" {
 			continue
 		}
 		return resolved
@@ -170,26 +126,57 @@ func (b *builder) chooseOneOf(schema map[string]any) map[string]any {
 	return nil
 }
 
-// matchesPattern is a deliberately tiny matcher: we only need to recognize
-// the "^x-" extension pattern that the meta-schema uses. A full regex
-// engine would be overkill and a security liability for a meta-schema that
-// changes once per OpenRPC release.
+// Build walks doc using meta to classify each object and collect candidates.
+// Assumes $refs are already resolved.
+func Build(doc any, meta *metaschema.MetaSchema) *Index {
+	byField := make(map[string][]*Candidate)
+	byPath := make(map[string]*Candidate)
+	b := &builder{meta: meta, visit: func(candidate *Candidate) {
+		byPath[candidate.Path.String()] = candidate
+		for field := range candidate.Fields {
+			byField[field] = append(byField[field], candidate)
+		}
+	}}
+	b.walk(doc, meta.Root(), spec.NormalizedPath{})
+	return &Index{ByField: byField, ByPath: byPath}
+}
+
+// objectCandidate constructs the field description for a recognized object.
+// A schema with no named properties contributes no candidate.
+func objectCandidate(obj map[string]any, schema map[string]any, path spec.NormalizedPath) *Candidate {
+	properties := schemaValue[map[string]any](schema["properties"])
+	if len(properties) == 0 {
+		return nil
+	}
+	fields := make(map[string]struct{}, len(properties))
+	for field := range properties {
+		fields[field] = struct{}{}
+	}
+	return &Candidate{
+		Path:        append(spec.NormalizedPath{}, path...),
+		Node:        obj,
+		SchemaTitle: schemaValue[string](schema["title"]),
+		Fields:      fields,
+	}
+}
+
+// matchesPattern recognizes the two property patterns in the embedded schema.
+// The unanchored component pattern needs at least one character from 0 to z.
 func matchesPattern(pattern, key string) bool {
 	switch pattern {
 	case "^x-":
 		return strings.HasPrefix(key, "x-")
 	case "[0-z]+":
-		return key != ""
+		return strings.IndexFunc(key, func(character rune) bool {
+			return character >= '0' && character <= 'z'
+		}) >= 0
 	}
 	return false
 }
 
-func mapOf(v any) map[string]any {
-	m, _ := v.(map[string]any)
-	return m
-}
-
-func stringOf(v any) string {
-	s, _ := v.(string)
-	return s
+// schemaValue reads a typed schema value; absent or mismatched values use
+// the type's zero value so callers can handle malformed schema fragments.
+func schemaValue[T any](value any) T {
+	result, _ := value.(T)
+	return result
 }

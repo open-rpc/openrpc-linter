@@ -185,7 +185,15 @@ func TestSelectCompoundDescendant(t *testing.T) {
         ]
       }`)
 	idx := Build(doc, metaV14(t))
-	got := Select(pathParse(t, "$.methods..result.schema"), doc, idx)
+	query := pathParse(t, "$.methods..result.schema")
+	before := query.String()
+	got := Select(query, doc, idx)
+	if query.String() != before {
+		t.Fatal("compound selection changed its query")
+	}
+	if again := Select(query, doc, idx); !reflect.DeepEqual(again, got) {
+		t.Fatal("reused query changed its targets")
+	}
 
 	if len(got) != 1 {
 		t.Fatalf("expected 1 compound target, got %+v", got)
@@ -196,6 +204,9 @@ func TestSelectCompoundDescendant(t *testing.T) {
 	}
 	if tgt.PathString() != "$['methods'][0]['result']['schema']" {
 		t.Fatalf("unexpected compound target path: %s", tgt.PathString())
+	}
+	if tgt.SchemaTitle != "contentDescriptorObject" {
+		t.Fatalf("compound target lost its document schema title: %q", tgt.SchemaTitle)
 	}
 }
 

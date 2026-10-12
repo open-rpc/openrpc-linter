@@ -49,6 +49,14 @@ func TestTruthyValuesAndPaths(t *testing.T) {
 }
 
 func TestRegisteredFunctions(t *testing.T) {
+	saved := FunctionRegistry
+	t.Cleanup(func() { FunctionRegistry = saved })
+	custom := &TruthyRule{}
+	FunctionRegistry = map[string]func() types.RuleFunction{"custom": func() types.RuleFunction { return custom }}
+	RegisterFunctions()
+	if FunctionRegistry["custom"]() != custom {
+		t.Fatal("registration replaced the custom factory")
+	}
 	for _, name := range []string{"truthy", "schema", "unique"} {
 		if factory := FunctionRegistry[name]; factory == nil || factory() == nil {
 			t.Fatalf("missing factory %q", name)
@@ -113,8 +121,8 @@ func TestUniqueScopeUsesResolvedDocument(t *testing.T) {
 	if got := r.RunRule("ping", ctx); len(got) != 0 {
 		t.Fatalf("first: %+v", got)
 	}
-	if len(r.scopePaths) != 1 {
-		t.Fatalf("expected resolved scope, got %v", r.scopePaths)
+	if len(r.scope.paths) != 1 {
+		t.Fatalf("expected resolved scope, got %v", r.scope.paths)
 	}
 	if got := r.RunRule("ping", ctx); len(got) != 1 {
 		t.Fatalf("expected duplicate in resolved scope: %+v", got)
@@ -149,5 +157,34 @@ func TestSchemaRemovedWorkspace(t *testing.T) {
 	action := &types.RuleAction{FunctionOptions: map[string]any{"type": "string"}}
 	if _, err := (&SchemaRule{}).schemaFor(action); err == nil {
 		t.Fatal("expected relative resource error")
+	}
+}
+
+func TestUniqueNestedScopesKeepSeparateFirstOccurrences(t *testing.T) {
+	document := map[string]any{"nodes": []any{map[string]any{
+		"name": "same", "other": "same",
+		"nodes": []any{map[string]any{"name": "same", "other": "same"}},
+	}}}
+	parent := spec.NormalizedPath{spec.Name("nodes"), spec.Index(0)}
+	child := spec.NormalizedPath{spec.Name("nodes"), spec.Index(0), spec.Name("nodes"), spec.Index(0)}
+	rule := NewUniqueRule()
+	context := types.RuleFunctionContext{Document: document, Rule: &types.Rule{Then: &types.RuleAction{FunctionOptions: map[string]any{"scope": "$..nodes[*]"}}}}
+	for _, tc := range []struct {
+		parent    spec.NormalizedPath
+		field     string
+		duplicate bool
+	}{
+		{parent, "name", false}, {child, "name", false}, {child, "other", true}, {parent, "other", true},
+	} {
+		path := append(append(spec.NormalizedPath{}, tc.parent...), spec.Name(tc.field))
+		target := valueTargetAt("same", path)
+		context.Target = &target
+		got := rule.RunRule("same", context)
+		if (len(got) > 0) != tc.duplicate {
+			t.Fatalf("%s: unexpected diagnostics %+v", path, got)
+		}
+		if tc.duplicate && !strings.Contains(got[0].Message, tc.parent.String()+"['name']") {
+			t.Fatalf("%s: wrong first occurrence %+v", path, got)
+		}
 	}
 }

@@ -2,7 +2,7 @@ package functions
 
 import (
 	"fmt"
-	"strconv"
+	"sort"
 
 	"github.com/open-rpc/openrpc-linter/selector"
 	"github.com/open-rpc/openrpc-linter/types"
@@ -13,14 +13,11 @@ import (
 const globalScopeKey = ""
 
 type UniqueRule struct {
-	seen       map[string]map[string]string
-	scopePaths []spec.NormalizedPath
-	scopeReady bool
-	scopeErr   error
+	scope *uniqueScope
 }
 
 func NewUniqueRule() *UniqueRule {
-	return &UniqueRule{seen: map[string]map[string]string{}}
+	return &UniqueRule{}
 }
 
 func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContext) []types.RuleFunctionResult {
@@ -29,65 +26,89 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 		return nil
 	}
 
-	if err := r.ensureScopes(context); err != nil {
-		return []types.RuleFunctionResult{{
-			Message: "unique scope option invalid: " + err.Error(),
-			Path:    resultPath(t.PathString()),
-		}}
+	path := t.PathString()
+	if r.scope == nil {
+		paths, err := uniqueScopePaths(context)
+		r.scope = &uniqueScope{paths: paths, err: err}
+	}
+	if r.scope.err != nil {
+		return ruleFailure("unique scope option invalid: "+r.scope.err.Error(), path)
 	}
 
-	scopeKey, inScope := r.scopeKeyFor(t)
+	scopeKey, inScope := r.scope.keyFor(t)
 	if !inScope {
 		return nil
 	}
 
-	ignoreMissing, err := uniqueIgnoreMissing(context)
+	key, included, err := uniqueCandidate(value, context)
 	if err != nil {
-		return []types.RuleFunctionResult{{
-			Message: err.Error(),
-			Path:    resultPath(t.PathString()),
-		}}
+		return ruleFailure(err.Error(), path)
 	}
-
-	if t.Field != "" && !t.Exists {
-		if ignoreMissing {
-			return nil
-		}
-		value = nil
+	if !included {
+		return nil
 	}
-
-	key, display, ok := comparableKey(value)
-	if !ok {
-		return []types.RuleFunctionResult{{
-			Message: "unique value must be primitive",
-			Path:    resultPath(t.PathString()),
-		}}
+	firstPath, duplicate := r.scope.remember(scopeKey, key, path)
+	if duplicate {
+		return ruleFailure(fmt.Sprintf("Duplicate value %s (first seen at %s)", key.display(), firstPath), path)
 	}
-
-	if r.seen == nil {
-		r.seen = map[string]map[string]string{}
-	}
-	bucket, exists := r.seen[scopeKey]
-	if !exists {
-		bucket = map[string]string{}
-		r.seen[scopeKey] = bucket
-	}
-	if firstPath, dup := bucket[key]; dup {
-		return []types.RuleFunctionResult{{
-			Message: fmt.Sprintf("Duplicate value %s (first seen at %s)", display, firstPath),
-			Path:    resultPath(t.PathString()),
-		}}
-	}
-	bucket[key] = t.PathString()
 	return nil
 }
 
-func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
-	if ctx.Rule == nil || ctx.Rule.Then == nil {
-		return true, nil
-	}
+type uniqueScope struct {
+	paths []spec.NormalizedPath
+	err   error
+	seen  map[scopedValue]string
+}
 
-	raw, exists := ctx.Rule.Then.FunctionOptions["ignoreMissing"]
+// remember owns the per-scope first-seen state. It never replaces a first path.
+func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (string, bool) {
+	if s.seen == nil {
+		s.seen = make(map[scopedValue]string)
+	}
+	identity := scopedValue{scope: scopeKey, value: key}
+	if firstPath, duplicate := s.seen[identity]; duplicate {
+		return firstPath, true
+	}
+	s.seen[identity] = path
+	return "", false
+}
+
+func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
+	if len(s.paths) == 0 {
+		return globalScopeKey, true
+	}
+	for _, path := range s.paths {
+		if selector.IsUnder(t.Path, path) {
+			return path.String(), true
+		}
+	}
+	return "", false
+}
+
+// scopedValue makes scope and primitive identity one collision-safe map key.
+type scopedValue struct {
+	scope string
+	value primitiveKey
+}
+
+// uniqueCandidate applies presence policy and validates primitive identity.
+func uniqueCandidate(value any, context types.RuleFunctionContext) (primitiveKey, bool, error) {
+	ignoreMissing, err := uniqueIgnoreMissing(context)
+	if err != nil {
+		return primitiveKey{}, false, err
+	}
+	if missingField(context.Target) {
+		return primitiveKey{kind: primitiveNull}, !ignoreMissing, nil
+	}
+	key, supported := comparableKey(value)
+	if !supported {
+		return primitiveKey{}, false, fmt.Errorf("unique value must be primitive")
+	}
+	return key, true, nil
+}
+
+func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
+	raw, exists := functionOptions(ctx)["ignoreMissing"]
 	if !exists {
 		return true, nil
 	}
@@ -100,66 +121,24 @@ func uniqueIgnoreMissing(ctx types.RuleFunctionContext) (bool, error) {
 	return value, nil
 }
 
-func (r *UniqueRule) ensureScopes(ctx types.RuleFunctionContext) error {
-	if r.scopeReady {
-		return r.scopeErr
-	}
-	r.scopeReady = true
-
-	if ctx.Rule == nil || ctx.Rule.Then == nil || ctx.Rule.Then.FunctionOptions == nil {
-		return nil
-	}
-	raw, _ := ctx.Rule.Then.FunctionOptions["scope"].(string)
+func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, error) {
+	raw, _ := functionOptions(ctx)["scope"].(string)
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
-
 	p, err := jsonpath.Parse(raw)
 	if err != nil {
-		r.scopeErr = err
-		return err
+		return nil, err
 	}
-
 	doc := ctx.Document
 	if ctx.ResolvedDocument != nil {
 		doc = ctx.ResolvedDocument
 	}
-	for _, n := range p.SelectLocated(doc) {
-		r.scopePaths = append(r.scopePaths, n.Path)
+	var paths []spec.NormalizedPath
+	for _, node := range p.SelectLocated(doc) {
+		paths = append(paths, node.Path)
 	}
-	return nil
-}
-
-func (r *UniqueRule) scopeKeyFor(t *selector.Target) (string, bool) {
-	if len(r.scopePaths) == 0 {
-		return globalScopeKey, true
-	}
-	bestIdx, bestLen := -1, -1
-	for i, sp := range r.scopePaths {
-		if selector.IsUnder(t.Path, sp) && len(sp) > bestLen {
-			bestIdx, bestLen = i, len(sp)
-		}
-	}
-	if bestIdx < 0 {
-		return "", false
-	}
-	return r.scopePaths[bestIdx].String(), true
-}
-
-func comparableKey(value interface{}) (key string, displayValue string, supported bool) {
-	switch v := value.(type) {
-	case nil:
-		return "null", "null", true
-	case string:
-		return "string:" + v, strconv.Quote(v), true
-	case bool:
-		if v {
-			return "bool:true", "true", true
-		}
-		return "bool:false", "false", true
-	case float64:
-		return fmt.Sprintf("number:%g", v), fmt.Sprintf("%g", v), true
-	default:
-		return "", "", false
-	}
+	// Most-specific scopes come first. Selection order breaks equal-depth ties.
+	sort.SliceStable(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	return paths, nil
 }

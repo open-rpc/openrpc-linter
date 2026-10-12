@@ -48,23 +48,35 @@ func ExecuteRule(rule *types.Rule, context types.RuleFunctionContext) ([]types.R
 
 	var allResults []types.RuleFunctionResult
 	for i := range targets {
-		t := targets[i]
-		itemContext := context
-		itemContext.Path = t.PathString()
-		itemContext.Target = &t
-
-		for _, result := range ruleFunc.RunRule(t.Node, itemContext) {
-			if result.Message == "" {
-				continue
-			}
-			if len(result.Path) == 0 {
-				result.Path = []string{t.PathString()}
-			}
-			allResults = append(allResults, result)
-		}
+		allResults = executeTarget(ruleFunc, &targets[i], context, allResults)
 	}
 
 	return allResults, nil
+}
+
+// executeTarget binds one selected node to the shared rule context and
+// normalizes diagnostics before returning them to the rule executor.
+func executeTarget(ruleFunc types.RuleFunction, target *selector.Target, context types.RuleFunctionContext, results []types.RuleFunctionResult) []types.RuleFunctionResult {
+	context.Path = target.PathString()
+	context.Target = target
+	for _, result := range ruleFunc.RunRule(target.Node, context) {
+		if result.Message == "" {
+			continue
+		}
+		normalized := resultWithTargetPath(result, target)
+		results = append(results, normalized)
+	}
+	return results
+}
+
+// resultWithTargetPath copies a diagnostic and supplies only its missing path.
+// Read the target after the callback, which may have updated the selected node.
+func resultWithTargetPath(result types.RuleFunctionResult, target *selector.Target) types.RuleFunctionResult {
+	if len(result.Path) > 0 {
+		return result
+	}
+	result.Path = []string{target.PathString()}
+	return result
 }
 
 func GetFieldFromNode(node *yaml.Node, field string) *yaml.Node {

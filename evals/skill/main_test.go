@@ -98,20 +98,20 @@ func TestEvalCommandsAndLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loggedCommand(workspace, dir, "", filepath.Join(dir, "success.log"), "help", binary, "-test.list=TestEvalDocumentContract"); err != nil {
+	if err := (executionEnvironment{directory: workspace, bin: dir}).loggedCommand("", filepath.Join(dir, "success.log"), "help", binary, "-test.list=TestEvalDocumentContract"); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "success.log"))
 	if err != nil || !strings.Contains(string(data), "TestEvalDocumentContract") {
 		t.Fatalf("log: %q %v", data, err)
 	}
-	if err := loggedCommand(workspace, dir, "", filepath.Join(dir, "failure.log"), "bad", binary, "-invalid-flag"); err == nil || !strings.Contains(err.Error(), "failure.log") {
+	if err := (executionEnvironment{directory: workspace, bin: dir}).loggedCommand("", filepath.Join(dir, "failure.log"), "bad", binary, "-invalid-flag"); err == nil || !strings.Contains(err.Error(), "failure.log") {
 		t.Fatalf("failed command: %v", err)
 	}
-	if err := loggedCommand(workspace, dir, "", dir, "write", binary, "-test.list=none"); err == nil {
+	if err := (executionEnvironment{directory: workspace, bin: dir}).loggedCommand("", dir, "write", binary, "-test.list=none"); err == nil {
 		t.Fatal("log write failure")
 	}
-	if _, err := preparePrompt(workspace, dir, dir, "missing-command"); err == nil {
+	if _, err := preparePrompt(executionEnvironment{directory: workspace, bin: dir}, dir, "missing-command"); err == nil {
 		t.Fatal("missing skill command")
 	}
 }
@@ -124,7 +124,7 @@ func TestEvalExplicitAgentAndSetupFailure(t *testing.T) {
 	old := os.Args
 	t.Cleanup(func() { os.Args = old })
 	os.Args = []string{"eval", binary, "-test.list=none"}
-	if err := runAgent(t.TempDir(), t.TempDir(), t.TempDir(), "input"); err != nil {
+	if err := runAgent(executionEnvironment{directory: t.TempDir(), bin: t.TempDir()}, t.TempDir(), "input"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
@@ -147,5 +147,20 @@ func TestEvalRequestsFailureExit(t *testing.T) {
 	runMain(func(value int) { code = value })
 	if code != 1 {
 		t.Fatalf("exit code: %d", code)
+	}
+}
+
+func TestEvalCheckPreservesDocument(t *testing.T) {
+	original := map[string]any{"methods": []any{map[string]any{"name": "ping"}}}
+	for _, name := range []string{"ping", "other"} {
+		method := map[string]any{"name": name, "description": "pong"}
+		updated := map[string]any{"methods": []any{method}}
+		err := checkDocumentChange(original, updated)
+		if (name == "ping") != (err == nil) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if method["description"] != "pong" {
+			t.Fatalf("check changed the caller's method: %+v", method)
+		}
 	}
 }

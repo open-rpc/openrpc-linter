@@ -32,11 +32,19 @@ func newRootCommand() *cobra.Command {
 }
 
 func Execute() {
-	execute(os.Exit)
+	execute(rootCmd.Execute, os.Exit)
 }
 
-func execute(exit func(int)) {
-	if err := rootCmd.Execute(); err != nil {
+func execute(run func() error, exit func(int)) {
+	if err := run(); err != nil {
 		exit(1)
 	}
+}
+
+// commandArgument uses the command's documented default when no file is given.
+func commandArgument(args []string, fallback string) string {
+	if len(args) == 0 {
+		return fallback
+	}
+	return args[0]
 }

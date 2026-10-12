@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-rpc/openrpc-linter/internal/paths"
 	"github.com/open-rpc/openrpc-linter/types"
 )
 
@@ -18,8 +19,14 @@ func TestTruncate(t *testing.T) {
 		{"empty", "", 10, ""},
 		{"exact fit", "hello", 5, "hello"},
 		{"under limit", "hi", 10, "hi"},
-		{"over limit", "hello world", 8, "hello w…"},
+		{"over limit", "hello world", 8, "hello…"},
 		{"max one", "hello", 1, "…"},
+		{"max two", "hello", 2, "…"},
+		{"ellipsis only", "hello", 3, "…"},
+		{"whole accented character", "café monde", 8, "café…"},
+		{"split accented character", "café monde", 7, "caf…"},
+		{"split emoji", "a🐟b", 5, "a…"},
+		{"leading emoji", "🐟abc", 4, "…"},
 		{"max zero passthrough", "hello", 0, "hello"},
 	}
 	for _, tc := range cases {
@@ -44,13 +51,14 @@ func TestResolveGroup(t *testing.T) {
 	cases := []struct {
 		name     string
 		labels   types.PathLabels
-		wantKind string
+		wantKind groupKind
 		wantName string
 	}{
 		{"method wins over nested schema", types.PathLabels{Method: "foo", Schema: "Bar"}, groupKindMethod, "foo"},
 		{"components schema", types.PathLabels{Section: "components", Schema: "Pet"}, groupKindSchema, "Pet"},
 		{"components descriptor", types.PathLabels{Section: "components", Descriptor: "Block"}, groupKindDescriptor, "Block"},
 		{"components tag", types.PathLabels{Section: "components", Tag: "eth"}, groupKindTag, "eth"},
+		{"components section without an anchor", types.PathLabels{Section: "components"}, groupKindSection, "components"},
 		{"info section", types.PathLabels{Section: "info"}, groupKindSection, "info"},
 		{"empty falls back to general", types.PathLabels{}, groupKindGeneral, "general"},
 	}
@@ -58,7 +66,7 @@ func TestResolveGroup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			kind, name := resolveGroup(tc.labels)
 			if kind != tc.wantKind || name != tc.wantName {
-				t.Fatalf("resolveGroup(%+v) = (%q,%q), want (%q,%q)", tc.labels, kind, name, tc.wantKind, tc.wantName)
+				t.Fatalf("resolveGroup(%+v) = (%v,%q), want (%v,%q)", tc.labels, kind, name, tc.wantKind, tc.wantName)
 			}
 		})
 	}
@@ -66,7 +74,8 @@ func TestResolveGroup(t *testing.T) {
 
 func TestFormatGroupHeader(t *testing.T) {
 	cases := []struct {
-		kind, name, want string
+		kind       groupKind
+		name, want string
 	}{
 		{groupKindMethod, "eth_getLogs", "eth_getLogs"},
 		{groupKindSchema, "Pet", `schema "Pet"`},
@@ -77,7 +86,7 @@ func TestFormatGroupHeader(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := formatGroupHeader(tc.kind, tc.name); got != tc.want {
-			t.Errorf("formatGroupHeader(%q,%q) = %q, want %q", tc.kind, tc.name, got, tc.want)
+			t.Errorf("formatGroupHeader(%v,%q) = %q, want %q", tc.kind, tc.name, got, tc.want)
 		}
 	}
 }
@@ -86,7 +95,7 @@ func TestFormatSecondaryLabels(t *testing.T) {
 	cases := []struct {
 		name      string
 		labels    types.PathLabels
-		groupKind string
+		groupKind groupKind
 		want      []string
 	}{
 		{
@@ -141,7 +150,8 @@ func TestMethodIndexFromPath(t *testing.T) {
 		{"", -1},
 	}
 	for _, tc := range cases {
-		if got := methodIndexFromPath(tc.path); got != tc.want {
+		position, _ := paths.Parse(tc.path)
+		if got := position.MethodIndex(); got != tc.want {
 			t.Errorf("methodIndexFromPath(%q) = %d, want %d", tc.path, got, tc.want)
 		}
 	}

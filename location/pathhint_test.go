@@ -125,10 +125,34 @@ func TestFriendlyPath(t *testing.T) {
 		{`$['components']['schemas']['Pet']['title']`, "components.schemas.Pet.title"},
 		{`$['info']['description']`, "info.description"},
 		{"$", "$"},
+		{`$['']`, "['']"},
+		{`$['a\'b']`, "a'b"},
+		{`$['line\nbreak']`, `line\nbreak`},
+		{`$['tab\tfield']`, `tab\tfield`},
+		{`$['a\\b']`, `a\\b`},
+		{`$['info'][*]`, `$['info'][*]`},
+		{`$[2]['title']`, "[2].title"},
+		{`$[2][3]['title']`, "[2][3].title"},
 	}
 	for _, tt := range tests {
 		if got := FriendlyPath(tt.in); got != tt.want {
 			t.Errorf("FriendlyPath(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestResolveEscapedSchemaName(t *testing.T) {
+	document := map[string]any{"components": map[string]any{"schemas": map[string]any{"O'Reilly": map[string]any{}}}}
+	labels := Resolve(document, `$['components']['schemas']['O\'Reilly']['title']`)
+	if labels != (types.PathLabels{Section: "components", Schema: "O'Reilly"}) {
+		t.Fatalf("escaped schema labels: %+v", labels)
+	}
+}
+
+func TestResolveRejectsQueryPaths(t *testing.T) {
+	for _, path := range []string{"unknown", "$['methods'][*]['name']", "$..name"} {
+		if labels := Resolve(doc(), path); !labels.IsEmpty() {
+			t.Errorf("Resolve(%q) = %+v", path, labels)
 		}
 	}
 }

@@ -7,6 +7,7 @@ package selector
 
 import (
 	"github.com/theory/jsonpath/spec"
+	"slices"
 )
 
 // Target is the uniform unit that rule functions evaluate.//
@@ -42,7 +43,7 @@ func IsUnder(child, scope spec.NormalizedPath) bool {
 // fieldTarget builds a Target for a named field on a parent map.
 func fieldTarget(parent any, parentPath spec.NormalizedPath, field string, schemaTitle string) Target {
 	value, exists := mapField(parent, field)
-	childPath := append(append(spec.NormalizedPath{}, parentPath...), spec.Name(field))
+	childPath := slices.Concat(parentPath, spec.NormalizedPath{spec.Name(field)})
 	return Target{
 		Path:        childPath,
 		Node:        value,

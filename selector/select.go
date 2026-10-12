@@ -3,7 +3,78 @@ package selector
 import (
 	"github.com/theory/jsonpath"
 	"github.com/theory/jsonpath/spec"
+	"slices"
 )
+
+// selection binds a query fragment to its current node and document index.
+// base tracks the current node's document path; returned target paths stay local.
+type selection struct {
+	segments []*spec.Segment
+	current  any
+	index    *Index
+	base     spec.NormalizedPath
+}
+
+func (s selection) targets() []Target {
+	segments := s.segments
+	if len(segments) == 0 {
+		return []Target{valueTarget(nil, s.current)}
+	}
+
+	lastDescendant := lastDescendantIndex(segments)
+	if lastDescendant < 0 {
+		return s.children()
+	}
+
+	if lastDescendant == len(segments)-1 {
+		field, named := terminalName(segments[lastDescendant])
+		if !named || s.index == nil {
+			return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), s.current)
+		}
+		return descendantFieldTargets(segments[:lastDescendant], field, s.current, s.index)
+	}
+	// Query evaluation only reads segments, so the recursive prefix can borrow
+	// the original slice instead of copying the same prefix and descendant.
+	prefix := s
+	prefix.segments = segments[:lastDescendant+1]
+	return s.compound(prefix.targets(), segments[lastDescendant+1:])
+}
+
+// children reports missing named fields and otherwise uses value mode.
+func (s selection) children() []Target {
+	segments := s.segments
+	field, ok := terminalName(segments[len(segments)-1])
+	if !ok {
+		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), s.current)
+	}
+	parentPath := jsonpath.New(spec.Query(true, segments[:len(segments)-1]...))
+	parents := parentPath.SelectLocated(s.current)
+	out := make([]Target, 0, len(parents))
+	for _, parent := range parents {
+		out = append(out, fieldTarget(parent.Node, parent.Path, field, candidateTitle(s.index, parent.Path, s.base)))
+	}
+	return out
+}
+
+// compound evaluates the remaining query beneath each existing
+// intermediate node, then restores its document-relative paths.
+func (s selection) compound(intermediates []Target, suffix []*spec.Segment) []Target {
+	out := make([]Target, 0, len(intermediates))
+	for _, intermediate := range intermediates {
+		if !intermediate.Exists {
+			continue
+		}
+		childSelection := s
+		childSelection.segments = suffix
+		childSelection.current = intermediate.Node
+		childSelection.base = slices.Concat(s.base, intermediate.Path)
+		children := childSelection.targets()
+		for _, child := range children {
+			out = append(out, rebase(child, intermediate.Path))
+		}
+	}
+	return out
+}
 
 // Select turns a parsed JSONPath query into the uniform []Target stream
 // that rule functions consume. It encapsulates the three modes the
@@ -25,92 +96,16 @@ func Select(p *jsonpath.Path, doc any, idx *Index) []Target {
 	if p == nil {
 		return nil
 	}
-	segments := p.Query().Segments()
-	return selectSegments(segments, doc, doc, spec.NormalizedPath{}, idx)
+	return (selection{segments: p.Query().Segments(), current: doc, index: idx}).targets()
 }
 
-// selectSegments evaluates segments against current rooted at root.
-// basePath is the canonical path of current within root (empty for the
-// initial call). idx is the precomputed schema-aware Index.
-func selectSegments(
-	segments []*spec.Segment,
-	current any,
-	root any,
-	basePath spec.NormalizedPath,
-	idx *Index,
-) []Target {
-	if len(segments) == 0 {
-		return []Target{valueTarget(basePath, current)}
-	}
-
-	// Find the *last* descendant segment. Everything up to and including
-	// it is the "descendant phase"; the suffix is evaluated as a normal
-	// JSONPath against each descendant-phase result. This keeps the
-	// implementation a single recursion rather than a state machine.
-	lastDescendant := -1
-	for i, seg := range segments {
-		if seg.IsDescendant() {
-			lastDescendant = i
+func lastDescendantIndex(segments []*spec.Segment) int {
+	for i, segment := range slices.Backward(segments) {
+		if segment.IsDescendant() {
+			return i
 		}
 	}
-
-	last := segments[len(segments)-1]
-
-	// Case 1: terminal single-name child segment — classic parent-field mode.
-	// $.info.description, $.methods[*].description, $.methods
-	if lastDescendant == -1 {
-		if field, ok := terminalName(last); ok {
-			parentPath := jsonpath.New(spec.Query(true, segments[:len(segments)-1]...))
-			parents := parentPath.SelectLocated(current)
-			out := make([]Target, 0, len(parents))
-			for _, parent := range parents {
-				out = append(out, fieldTarget(parent.Node, parent.Path, field, candidateTitle(idx, parent.Path)))
-			}
-			return out
-		}
-		// No terminal-name simplification possible — pure value mode.
-		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
-	}
-
-	// Case 2: descendant present somewhere.
-	descSeg := segments[lastDescendant]
-	prefix := segments[:lastDescendant]
-	suffix := segments[lastDescendant+1:]
-
-	// 2a) Pure descendant terminal: $..f or $.scope..f. The descendant
-	//     selector is a single .name — use the Index so we report missing
-	//     candidates, not just existing ones.
-	if len(suffix) == 0 {
-		if field, ok := terminalName(descSeg); ok && idx != nil {
-			return descendantFieldTargets(prefix, field, current, idx)
-		}
-		return valueModeTargets(jsonpath.New(spec.Query(true, segments...)), current)
-	}
-
-	// 2b) Compound descendant: $.scope..f.rest. Do the descendant step
-	//     first using whatever the descendant segment is (named or not),
-	//     then re-run Select with the remaining segments rooted at each
-	//     intermediate node. This is the recursive case
-	midSegments := append(append([]*spec.Segment{}, prefix...), descSeg)
-	midTargets := selectSegments(midSegments, current, root, spec.NormalizedPath{}, idx)
-
-	out := make([]Target, 0, len(midTargets))
-	for _, mid := range midTargets {
-		if !mid.Exists {
-			// A missing intermediate (e.g. .foo not present) has no further
-			// children to walk. Surface it directly only when there is no
-			// suffix; in compound queries we just skip it because we can't
-			// keep descending into nothing.
-			continue
-		}
-		// Evaluate the suffix as a standalone query rooted at mid.Node.
-		// We rebase by prepending mid.Path to each emitted target's path.
-		subTargets := selectSegments(suffix, mid.Node, mid.Node, mid.Path, idx)
-		for _, t := range subTargets {
-			out = append(out, rebase(t, mid.Path))
-		}
-	}
-	return out
+	return -1
 }
 
 // descendantFieldTargets implements the schema-aware step: take the scope
@@ -183,9 +178,12 @@ func terminalName(seg *spec.Segment) (string, bool) {
 // candidateTitle looks up the matched schema title for a parent path so
 // diagnostics can say e.g. "Missing field 'description' on
 // methodObject at ...". Returns "" if the parent wasn't indexed.
-func candidateTitle(idx *Index, path spec.NormalizedPath) string {
+func candidateTitle(idx *Index, path, base spec.NormalizedPath) string {
 	if idx == nil {
 		return ""
+	}
+	if len(base) > 0 {
+		path = slices.Concat(base, path)
 	}
 	if c, ok := idx.ByPath[path.String()]; ok {
 		return c.SchemaTitle
@@ -200,9 +198,9 @@ func rebase(t Target, prefix spec.NormalizedPath) Target {
 	if len(prefix) == 0 {
 		return t
 	}
-	t.Path = append(append(spec.NormalizedPath{}, prefix...), t.Path...)
+	t.Path = slices.Concat(prefix, t.Path)
 	if t.ParentPath != nil {
-		t.ParentPath = append(append(spec.NormalizedPath{}, prefix...), t.ParentPath...)
+		t.ParentPath = slices.Concat(prefix, t.ParentPath)
 	}
 	return t
 }

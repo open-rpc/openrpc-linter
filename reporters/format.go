@@ -2,8 +2,7 @@ package reporters
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
+	"unicode/utf8"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
@@ -14,14 +13,21 @@ const (
 	colRule    = 32
 )
 
-// Group kinds, ordered by render priority (lower first).
+// groupKind fixes render priority in the type rather than a mutable map.
+type groupKind uint8
+
+func (kind groupKind) label() string {
+	return [...]string{"method", "schema", "descriptor", "tag", "section", "general", "param"}[kind]
+}
+
 const (
-	groupKindMethod     = "method"
-	groupKindSchema     = "schema"
-	groupKindDescriptor = "descriptor"
-	groupKindTag        = "tag"
-	groupKindSection    = "section"
-	groupKindGeneral    = "general"
+	groupKindMethod groupKind = iota
+	groupKindSchema
+	groupKindDescriptor
+	groupKindTag
+	groupKindSection
+	groupKindGeneral
+	groupKindParam // secondary label only
 )
 
 func severityLabel(severity types.Severity) string {
@@ -35,15 +41,20 @@ func severityLabel(severity types.Severity) string {
 	}
 }
 
-// truncate shortens s to at most max bytes, appending "…" when clipped.
+// truncate preserves UTF-8 and reserves the byte width of the ellipsis.
+// Limits smaller than the ellipsis itself still show the complete ellipsis.
 func truncate(s string, max int) string {
 	if max <= 0 || len(s) <= max {
 		return s
 	}
-	if max == 1 {
+	limit := max - len("…")
+	if limit < 0 {
 		return "…"
 	}
-	return s[:max-1] + "…"
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit] + "…"
 }
 
 // colWidth returns min(max, widest cell) for batch column padding.
@@ -77,34 +88,39 @@ func formatColumnHeaderRow(pathW int) string {
 
 // resolveGroup picks the most specific anchor on labels and returns a
 // (kind, name) pair. The kind drives both header rendering and group order.
-func resolveGroup(labels types.PathLabels) (string, string) {
-	if labels.Method != "" {
+func resolveGroup(labels types.PathLabels) (groupKind, string) {
+	switch {
+	case labels.Method != "":
 		return groupKindMethod, labels.Method
-	}
-	if labels.Section == "components" {
-		if labels.Schema != "" {
-			return groupKindSchema, labels.Schema
-		}
-		if labels.Descriptor != "" {
-			return groupKindDescriptor, labels.Descriptor
-		}
-		if labels.Tag != "" {
-			return groupKindTag, labels.Tag
-		}
-	}
-	if labels.Section != "" {
+	case labels.Section == "components":
+		return componentGroup(labels)
+	case labels.Section != "":
 		return groupKindSection, labels.Section
+	default:
+		return groupKindGeneral, "general"
 	}
-	return groupKindGeneral, "general"
+}
+
+func componentGroup(labels types.PathLabels) (groupKind, string) {
+	switch {
+	case labels.Schema != "":
+		return groupKindSchema, labels.Schema
+	case labels.Descriptor != "":
+		return groupKindDescriptor, labels.Descriptor
+	case labels.Tag != "":
+		return groupKindTag, labels.Tag
+	default:
+		return groupKindSection, "components"
+	}
 }
 
 // formatGroupHeader renders the line printed above each group's rows.
 //   - method/section/general → bare name
 //   - schema/descriptor/tag → `<kind> "<name>"`
-func formatGroupHeader(kind, name string) string {
+func formatGroupHeader(kind groupKind, name string) string {
 	switch kind {
 	case groupKindSchema, groupKindDescriptor, groupKindTag:
-		return fmt.Sprintf("%s %q", kind, name)
+		return fmt.Sprintf("%s %q", kind.label(), name)
 	default:
 		return name
 	}
@@ -114,37 +130,22 @@ func formatGroupHeader(kind, name string) string {
 // anchor set on labels that is NOT the row's group key. Example: a row
 // grouped by method "foo" whose schema title is "Bar" yields ["schema: \"Bar\""].
 // Param is always shown when present (since the group is never "param").
-func formatSecondaryLabels(labels types.PathLabels, groupKind string) []string {
+func formatSecondaryLabels(labels types.PathLabels, selectedKind groupKind) []string {
+	anchors := []struct {
+		kind  groupKind
+		value string
+	}{
+		{groupKindParam, labels.Param},
+		{groupKindDescriptor, labels.Descriptor},
+		{groupKindSchema, labels.Schema},
+		{groupKindTag, labels.Tag},
+	}
 	var out []string
-	if labels.Param != "" {
-		out = append(out, fmt.Sprintf("param: %q", labels.Param))
-	}
-	if labels.Descriptor != "" && groupKind != groupKindDescriptor {
-		out = append(out, fmt.Sprintf("descriptor: %q", labels.Descriptor))
-	}
-	if labels.Schema != "" && groupKind != groupKindSchema {
-		out = append(out, fmt.Sprintf("schema: %q", labels.Schema))
-	}
-	if labels.Tag != "" && groupKind != groupKindTag {
-		out = append(out, fmt.Sprintf("tag: %q", labels.Tag))
+	for _, anchor := range anchors {
+		if anchor.value == "" || anchor.kind == selectedKind {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s: %q", anchor.kind.label(), anchor.value))
 	}
 	return out
-}
-
-// methodIndexRe extracts the methods[N] index from a normalized JSONPath so
-// method groups can be ordered by document position rather than alphabetically.
-var methodIndexRe = regexp.MustCompile(`\['methods'\]\[(\d+)\]`)
-
-// methodIndexFromPath returns the array index of the first methods[N] segment
-// in a normalized JSONPath, or -1 when no such segment exists.
-func methodIndexFromPath(jsonPath string) int {
-	m := methodIndexRe.FindStringSubmatch(jsonPath)
-	if len(m) < 2 {
-		return -1
-	}
-	idx, err := strconv.Atoi(m[1])
-	if err != nil {
-		return -1
-	}
-	return idx
 }

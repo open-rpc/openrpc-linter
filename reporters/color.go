@@ -63,7 +63,10 @@ func supportsColor(w io.Writer) bool {
 		return false
 	}
 	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 // formatSeverityCol returns a fixed-width severity cell. When colorEnabled is
@@ -78,14 +81,8 @@ func formatSeverityCol(severity types.Severity, colorEnabled bool) string {
 // Passing an empty code or enabled=false yields the plain padded cell so
 // column alignment is preserved regardless of color state.
 func styledCell(s string, width int, code string, enabled bool) string {
-	pad := width - len(s)
-	if pad < 0 {
-		pad = 0
-	}
-	if !enabled || code == "" {
-		return s + strings.Repeat(" ", pad)
-	}
-	return code + s + ansiReset + strings.Repeat(" ", pad)
+	padding := strings.Repeat(" ", max(0, width-len(s)))
+	return colorize(s, code, enabled) + padding
 }
 
 // colorize wraps s with code (and a reset) when enabled is true. Used for
