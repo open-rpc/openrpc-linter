@@ -28,11 +28,12 @@ func (r *TruthyRule) RunRule(value interface{}, context types.RuleFunctionContex
 }
 
 func truthyValue(value interface{}) bool {
-	if value == nil {
+	switch value := value.(type) {
+	case nil:
 		return false
+	case string:
+		return value != "" && value != "null"
+	default:
+		return true
 	}
-	if str, ok := value.(string); ok && (str == "" || str == "null") {
-		return false
-	}
-	return true
 }

@@ -64,13 +64,12 @@ func (s selection) targets() []Target {
 }
 
 func lastDescendantIndex(segments []*spec.Segment) int {
-	last := -1
-	for i, segment := range segments {
+	for i, segment := range slices.Backward(segments) {
 		if segment.IsDescendant() {
-			last = i
+			return i
 		}
 	}
-	return last
+	return -1
 }
 
 // children reports missing named fields and otherwise uses value mode.

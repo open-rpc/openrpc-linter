@@ -1,8 +1,6 @@
 package functions
 
 import (
-	"fmt"
-
 	"github.com/open-rpc/openrpc-linter/types"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -28,12 +26,12 @@ func (r *SchemaRule) RunRule(value interface{}, context types.RuleFunctionContex
 
 	schema, err := r.schemaFor(then)
 	if err != nil {
-		return ruleFailure(fmt.Sprintf("Invalid schema functionOptions: %v", err), "")
+		return ruleFailure("Invalid schema functionOptions: "+err.Error(), "")
 	}
 
 	err = schema.Validate(value)
 	if err != nil {
-		return ruleFailure(fmt.Sprintf("Value does not match schema: %v", err), "")
+		return ruleFailure("Value does not match schema: "+err.Error(), "")
 	}
 
 	return nil

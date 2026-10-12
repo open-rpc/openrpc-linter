@@ -68,7 +68,7 @@ func (path Path) Friendly() string {
 
 func friendlySegment(selector spec.NormalSelector) string {
 	if index, indexed := selector.(spec.Index); indexed {
-		return "[" + strconv.Itoa(int(index)) + "]"
+		return "[" + index.String() + "]"
 	}
 	name, _ := selector.(spec.Name)
 	if name == "" {
