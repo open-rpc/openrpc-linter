@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -52,14 +53,17 @@ func RunInit(opts InitOptions) error {
 		}
 		return err
 	}
-	defer file.Close()
-
-	if _, err := file.WriteString(basicRulesYAML); err != nil {
+	if err := writeRulesFile(file); err != nil {
 		return err
 	}
 
 	_, err = fmt.Fprintf(opts.Output, "Created %s\n", opts.RulesFile)
 	return err
+}
+
+func writeRulesFile(file io.WriteCloser) error {
+	_, writeErr := io.WriteString(file, basicRulesYAML)
+	return errors.Join(writeErr, file.Close())
 }
 
 func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {

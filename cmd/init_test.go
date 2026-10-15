@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,5 +98,36 @@ func TestRunInitReturnsOutputFailure(t *testing.T) {
 	content, err := os.ReadFile(rulesFile)
 	if err != nil || string(content) != basicRulesYAML {
 		t.Fatalf("rules file must be written before the status output: %q, %v", content, err)
+	}
+}
+
+type rulesFileStub struct {
+	writeErr, closeErr error
+	closed             bool
+}
+
+func (f *rulesFileStub) Write(p []byte) (int, error) {
+	if f.writeErr != nil {
+		return 0, f.writeErr
+	}
+	return len(p), nil
+}
+func (f *rulesFileStub) Close() error { f.closed = true; return f.closeErr }
+
+func TestWriteRulesFilePreservesErrors(t *testing.T) {
+	writeErr := errors.New("write failed")
+	closeErr := errors.New("close failed")
+	for _, failWrite := range []bool{false, true} {
+		file := &rulesFileStub{closeErr: closeErr}
+		if failWrite {
+			file.writeErr = writeErr
+		}
+		err := writeRulesFile(file)
+		if !file.closed || !errors.Is(err, closeErr) {
+			t.Fatalf("closed=%v, error=%v", file.closed, err)
+		}
+		if failWrite && !errors.Is(err, writeErr) {
+			t.Fatalf("lost write error: %v", err)
+		}
 	}
 }
