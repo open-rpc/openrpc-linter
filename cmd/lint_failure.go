@@ -1,12 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
 
 // lintFailure carries stage evidence to the command's output boundary.
-// Callers still receive the original cause after the diagnostic is written.
+// Callers receive the original cause and any diagnostic write error.
 type lintFailure struct {
 	prefix string
 	cause  error
@@ -21,6 +22,8 @@ func reportLintFailure(err error, output io.Writer) error {
 	if !ok {
 		return err
 	}
-	fmt.Fprintln(output, failure.Error())
+	if _, writeErr := fmt.Fprintln(output, failure.Error()); writeErr != nil {
+		return errors.Join(failure.cause, writeErr)
+	}
 	return failure.cause
 }
