@@ -55,6 +55,7 @@ func (r *UniqueRule) RunRule(value interface{}, context types.RuleFunctionContex
 }
 
 type uniqueScope struct {
+	// Nil paths mean global scope; an empty slice means no scope matches.
 	paths []spec.NormalizedPath
 	err   error
 	seen  map[scopedValue]string
@@ -74,7 +75,7 @@ func (s *uniqueScope) remember(scopeKey string, key primitiveKey, path string) (
 }
 
 func (s *uniqueScope) keyFor(t *selector.Target) (string, bool) {
-	if len(s.paths) == 0 {
+	if s.paths == nil {
 		return globalScopeKey, true
 	}
 	for _, path := range s.paths {
@@ -134,7 +135,7 @@ func uniqueScopePaths(ctx types.RuleFunctionContext) ([]spec.NormalizedPath, err
 	if ctx.ResolvedDocument != nil {
 		doc = ctx.ResolvedDocument
 	}
-	var paths []spec.NormalizedPath
+	paths := make([]spec.NormalizedPath, 0)
 	for _, node := range p.SelectLocated(doc) {
 		paths = append(paths, node.Path)
 	}
