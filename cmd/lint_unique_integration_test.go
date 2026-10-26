@@ -3,12 +3,50 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/open-rpc/openrpc-linter/types"
 )
+
+func TestRunLintUniqueScopeWithoutMatches(t *testing.T) {
+	document := `{"openrpc":"1.3.2","info":{"title":"Test","version":"1.0.0"},"methods":[{"name":"same"},{"name":"same"}],"tags":[]}`
+	for _, tc := range []struct {
+		name          string
+		scopeOption   string
+		wantDuplicate bool
+	}{
+		{"omitted scope is global", "", true},
+		{"empty scope is global", `scope: ""`, true},
+		{"root scope includes all targets", `scope: "$"`, true},
+		{"missing collection skips targets", `scope: "$.missing[*]"`, false},
+		{"empty collection skips targets", `scope: "$.tags[*]"`, false},
+		{"unmatched filter skips targets", `scope: "$.methods[?@.name == 'absent']"`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rules := fmt.Sprintf(`rules:
+  scoped-unique:
+    given: "$.methods[*].name"
+    then:
+      function: unique
+      functionOptions:
+        %s
+`, tc.scopeOption)
+			results, err := runLintJSON(t, document, rules)
+			if !tc.wantDuplicate {
+				if err != nil || len(results) != 0 {
+					t.Fatalf("targets outside scope must be skipped: results=%+v, err=%v", results, err)
+				}
+				return
+			}
+			if err == nil || len(results) != 1 || results[0].Message != `Duplicate value "same" (first seen at $['methods'][0]['name'])` {
+				t.Fatalf("expected one global duplicate: results=%+v, err=%v", results, err)
+			}
+		})
+	}
+}
 
 func TestRunLintUniqueBadDocumentReportsEveryRule(t *testing.T) {
 	var output bytes.Buffer
