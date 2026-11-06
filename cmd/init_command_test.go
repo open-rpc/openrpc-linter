@@ -1,13 +1,42 @@
 package cmd
 
 import (
+	"bytes"
+	"errors"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"testing"
 )
+
+func TestInitCommandReportsFailures(t *testing.T) {
+	wantOutputErr := errors.New("status output unavailable")
+	for _, tc := range []struct {
+		name   string
+		path   string
+		output io.Writer
+		want   string
+	}{
+		{"missing parent", filepath.Join(t.TempDir(), "missing", "rules.yml"), io.Discard, "rules.yml"},
+		{"status output", filepath.Join(t.TempDir(), "rules.yml"), failingWriter{err: wantOutputErr}, wantOutputErr.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var diagnostics bytes.Buffer
+			command := &cobra.Command{}
+			command.SetOut(tc.output)
+			command.SetErr(&diagnostics)
+			code := 0
+			runInitCommand(command, []string{tc.path}, func(value int) { code = value })
+			if code != 1 || !strings.Contains(diagnostics.String(), tc.want) {
+				t.Fatalf("expected failure diagnostic containing %q: exit=%d, stderr=%q", tc.want, code, diagnostics.String())
+			}
+		})
+	}
+}
 
 func TestInitDefaultsAndCommand(t *testing.T) {
 	t.Chdir(t.TempDir())

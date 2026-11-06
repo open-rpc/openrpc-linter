@@ -73,7 +73,13 @@ func runInitCommand(cmd *cobra.Command, args []string, exit func(int)) {
 		Force:     initForce,
 	}
 
-	execute(func() error { return RunInit(opts) }, exit)
+	execute(func() error {
+		if err := RunInit(opts); err != nil {
+			_, writeErr := fmt.Fprintln(cmd.ErrOrStderr(), err)
+			return errors.Join(err, writeErr)
+		}
+		return nil
+	}, exit)
 }
 
 func init() {
